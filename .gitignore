@@ -34,3 +34,4 @@ build/
 
 ### Generated Reports ###
 reports/
+secrets.properties
