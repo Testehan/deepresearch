@@ -1,5 +1,6 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.pipeline;
 
+import com.testehan.deepresearch.model.SearchCandidate;
 import dev.danvega.browserbase.Browserbase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.Set;
 
 @Service
-class DiscoveryService {
+public class DiscoveryService {
 
     private static final Logger log = LoggerFactory.getLogger(DiscoveryService.class);
 
@@ -28,12 +29,11 @@ class DiscoveryService {
         this.maxSources = maxSources;
     }
 
-    record DiscoveryResult(List<SearchCandidate> candidates, int queriesGenerated) {}
+    public record DiscoveryResult(List<SearchCandidate> candidates, int queriesGenerated) {}
 
-    DiscoveryResult discover(String topic) {
+    public DiscoveryResult discover(String topic) {
         log.info("--- Step 1: Search + Discover ---");
 
-        // Generate diverse search queries using the LLM
         int numQueries = (maxSources <= 5) ? 1 : 2;
 
         List<String> queries = chatClient.prompt("""
@@ -51,7 +51,6 @@ class DiscoveryService {
                 .call()
                 .entity(new ParameterizedTypeReference<>() {});
 
-        // Execute each query and collect results
         int rawHits = 0;
         Set<String> seenUrls = new LinkedHashSet<>();
         List<SearchCandidate> candidates = new ArrayList<>();

@@ -1,6 +1,7 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.controller;
 
-import org.springframework.http.HttpStatus;
+import com.testehan.deepresearch.model.ResearchJob;
+import com.testehan.deepresearch.service.JobService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 

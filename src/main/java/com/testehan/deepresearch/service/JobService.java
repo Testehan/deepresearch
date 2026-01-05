@@ -1,5 +1,9 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.service;
 
+import com.testehan.deepresearch.model.Diagnostics;
+import com.testehan.deepresearch.model.ResearchJob;
+import com.testehan.deepresearch.model.ResearchReport;
+import com.testehan.deepresearch.model.SourceReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -67,7 +71,7 @@ public class JobService {
         log.info("Starting execution for job {}", jobId);
 
         try {
-            var report = pipeline.execute(job.topic());
+            ResearchReport report = pipeline.execute(job.topic());
             
             var result = new ResearchJob.JobResult(
                     report.executiveSummary(),
@@ -75,9 +79,9 @@ public class JobService {
                     report.themes(),
                     report.openQuestions(),
                     report.sources().stream()
-                            .map(s -> new ResearchJob.SourceReference(s.url(), s.title()))
+                            .map(s -> new SourceReference(s.url(), s.title()))
                             .toList(),
-                    new ResearchJob.Diagnostics(
+                    new Diagnostics(
                             report.diagnostics().queriesGenerated(),
                             report.diagnostics().urlsDiscovered(),
                             report.diagnostics().urlsFetched(),

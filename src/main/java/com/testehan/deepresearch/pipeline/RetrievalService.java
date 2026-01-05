@@ -1,5 +1,7 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.pipeline;
 
+import com.testehan.deepresearch.model.FetchedSource;
+import com.testehan.deepresearch.model.SearchCandidate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -9,7 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
-class RetrievalService {
+public class RetrievalService {
 
     private static final Logger log = LoggerFactory.getLogger(RetrievalService.class);
 
@@ -19,7 +21,7 @@ class RetrievalService {
         this.pageFetcher = pageFetcher;
     }
 
-    List<FetchedSource> retrieve(List<SearchCandidate> candidates) {
+    public List<FetchedSource> retrieve(List<SearchCandidate> candidates) {
         log.info("--- Step 2: Fetch ---");
 
         int total = candidates.size();

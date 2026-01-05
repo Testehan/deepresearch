@@ -1,4 +1,4 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.model;
 
 import java.time.Instant;
 import java.util.List;
@@ -20,16 +20,6 @@ public record ResearchJob(
             List<String> openQuestions,
             List<SourceReference> sources,
             Diagnostics diagnostics
-    ) {}
-
-    public record SourceReference(String url, String title) {}
-
-    public record Diagnostics(
-            int queriesGenerated,
-            int urlsDiscovered,
-            int urlsFetched,
-            int sourcesUsed,
-            long durationMs
     ) {}
 
     public enum JobStatus {

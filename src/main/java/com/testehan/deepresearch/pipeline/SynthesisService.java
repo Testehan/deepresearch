@@ -1,5 +1,6 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.pipeline;
 
+import com.testehan.deepresearch.model.FetchedSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -9,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-class SynthesisService {
+public class SynthesisService {
 
     private static final Logger log = LoggerFactory.getLogger(SynthesisService.class);
 
@@ -19,17 +20,16 @@ class SynthesisService {
         this.chatClient = builder.build();
     }
 
-    record Report(
+    public record Report(
             String executiveSummary,
             List<String> keyFindings,
             List<String> themes,
             List<String> openQuestions
     ) {}
 
-    Report synthesize(String topic, List<FetchedSource> sources) {
+    public Report synthesize(String topic, List<FetchedSource> sources) {
         log.info("--- Step 3: Synthesize ---");
 
-        // Stage 1: Analyze sources in chunks of 4
         List<String> chunkSummaries = new ArrayList<>();
         for (int i = 0; i < sources.size(); i += 4) {
             var chunk = sources.subList(i, Math.min(i + 4, sources.size()));
@@ -61,7 +61,6 @@ class SynthesisService {
             chunkSummaries.add(summary);
         }
 
-        // Stage 2: Compile final report
         log.info("  Compiling final report...");
         String allSummaries = String.join("\n\n---\n\n", chunkSummaries);
 

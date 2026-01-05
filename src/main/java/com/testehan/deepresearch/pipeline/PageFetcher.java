@@ -1,4 +1,4 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.pipeline;
 
 import dev.danvega.browserbase.Browserbase;
 import dev.danvega.browserbase.model.FetchAPICreateResponse;

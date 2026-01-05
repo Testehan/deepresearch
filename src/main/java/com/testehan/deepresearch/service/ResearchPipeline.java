@@ -1,5 +1,11 @@
-package com.testehan.deepresearch;
+package com.testehan.deepresearch.service;
 
+import com.testehan.deepresearch.model.Diagnostics;
+import com.testehan.deepresearch.model.ResearchReport;
+import com.testehan.deepresearch.model.SourceReference;
+import com.testehan.deepresearch.pipeline.DiscoveryService;
+import com.testehan.deepresearch.pipeline.RetrievalService;
+import com.testehan.deepresearch.pipeline.SynthesisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,10 +45,10 @@ class ResearchPipeline {
         log.info("Done in {}s", duration / 1000);
 
         var sourceRefs = sources.stream()
-                .map(s -> new ResearchReport.SourceReference(s.url(), s.title()))
+                .map(s -> new SourceReference(s.url(), s.title()))
                 .toList();
 
-        var diagnostics = new ResearchReport.Diagnostics(
+        var diagnostics = new Diagnostics(
                 discoveryResult.queriesGenerated(), candidates.size(), sources.size(), sources.size(), duration);
 
         var researchReport = new ResearchReport(
