@@ -2,6 +2,7 @@ package com.testehan.deepresearch.service;
 
 import com.testehan.deepresearch.model.Diagnostics;
 import com.testehan.deepresearch.model.ResearchReport;
+import com.testehan.deepresearch.model.ResearchRequest;
 import com.testehan.deepresearch.model.SourceReference;
 import com.testehan.deepresearch.pipeline.DiscoveryService;
 import com.testehan.deepresearch.pipeline.RetrievalService;
@@ -32,14 +33,24 @@ class ResearchPipeline {
         this.synthesisService = synthesisService;
     }
 
-    ResearchReport execute(String topic) {
+    ResearchReport execute(ResearchRequest request) {
         long start = System.currentTimeMillis();
-        log.info("Researching: \"{}\"", topic);
+        log.info("Researching: \"{}\"", request.topic());
 
-        var discoveryResult = discoveryService.discover(topic);
+        var discoveryResult = discoveryService.discover(
+                request.topic(),
+                request.resolvedMaxSources(),
+                request.resolvedDiscoveryPrompt()
+        );
         var candidates = discoveryResult.candidates();
         var sources = retrievalService.retrieve(candidates);
-        var report = synthesisService.synthesize(topic, sources);
+        var report = synthesisService.synthesize(
+                request.topic(),
+                sources,
+                request.resolvedChunkSize(),
+                request.resolvedSynthesisPrompt(),
+                request.compileReportPrompt()
+        );
 
         long duration = System.currentTimeMillis() - start;
         log.info("Done in {}s", duration / 1000);
@@ -49,10 +60,14 @@ class ResearchPipeline {
                 .toList();
 
         var diagnostics = new Diagnostics(
-                discoveryResult.queriesGenerated(), candidates.size(), sources.size(), sources.size(), duration);
+                discoveryResult.queriesGenerated(), 
+                candidates.size(), 
+                sources.size(), 
+                sources.size(), 
+                duration);
 
         var researchReport = new ResearchReport(
-                topic,
+                request.topic(),
                 report.executiveSummary(),
                 report.keyFindings(),
                 report.themes(),

@@ -3,6 +3,7 @@ package com.testehan.deepresearch.service;
 import com.testehan.deepresearch.model.Diagnostics;
 import com.testehan.deepresearch.model.ResearchJob;
 import com.testehan.deepresearch.model.ResearchReport;
+import com.testehan.deepresearch.model.ResearchRequest;
 import com.testehan.deepresearch.model.SourceReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,20 +30,21 @@ public class JobService {
         this.pipeline = pipeline;
     }
 
-    public ResearchJob createJob(String topic) {
+    public ResearchJob createJob(ResearchRequest request) {
         String jobId = UUID.randomUUID().toString();
         var job = new ResearchJob(
                 jobId,
-                topic,
+                request.topic(),
                 ResearchJob.JobStatus.PENDING,
                 null,
                 null,
                 Instant.now(),
                 null,
-                null
+                null,
+                request
         );
         jobs.put(jobId, job);
-        log.info("Created job {} for topic: {}", jobId, topic);
+        log.info("Created job {} for topic: {}", jobId, request.topic());
         return job;
     }
 
@@ -66,12 +68,14 @@ public class JobService {
                 null,
                 job.createdAt(),
                 null,
-                null
+                null,
+                job.config()
         ));
         log.info("Starting execution for job {}", jobId);
 
         try {
-            ResearchReport report = pipeline.execute(job.topic());
+            ResearchRequest request = job.config();
+            ResearchReport report = pipeline.execute(request);
             
             var result = new ResearchJob.JobResult(
                     report.executiveSummary(),
@@ -90,7 +94,7 @@ public class JobService {
                     )
             );
 
-            String filePath = findReportFile(job.topic());
+            String filePath = findReportFile(request.topic());
 
             jobs.put(jobId, new ResearchJob(
                     jobId,
@@ -100,7 +104,8 @@ public class JobService {
                     filePath,
                     job.createdAt(),
                     Instant.now(),
-                    result
+                    result,
+                    job.config()
             ));
             log.info("Job {} completed successfully", jobId);
 
@@ -114,7 +119,8 @@ public class JobService {
                     null,
                     job.createdAt(),
                     Instant.now(),
-                    null
+                    null,
+                    job.config()
             ));
         }
     }

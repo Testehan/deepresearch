@@ -27,14 +27,15 @@ public class SynthesisService {
             List<String> openQuestions
     ) {}
 
-    public Report synthesize(String topic, List<FetchedSource> sources) {
+    public Report synthesize(String topic, List<FetchedSource> sources, int chunkSize, 
+                             String analyzeChunkPrompt, String compileReportPrompt) {
         log.info("--- Step 3: Synthesize ---");
 
         List<String> chunkSummaries = new ArrayList<>();
-        for (int i = 0; i < sources.size(); i += 4) {
-            var chunk = sources.subList(i, Math.min(i + 4, sources.size()));
-            int chunkNum = (i / 4) + 1;
-            int totalChunks = (sources.size() + 3) / 4;
+        for (int i = 0; i < sources.size(); i += chunkSize) {
+            var chunk = sources.subList(i, Math.min(i + chunkSize, sources.size()));
+            int chunkNum = (i / chunkSize) + 1;
+            int totalChunks = (sources.size() + chunkSize - 1) / chunkSize;
             log.info("  Analyzing chunk {}/{} ({} sources)...", chunkNum, totalChunks, chunk.size());
 
             StringBuilder sourcesText = new StringBuilder();
@@ -43,17 +44,8 @@ public class SynthesisService {
                         source.title(), source.url(), source.content()));
             }
 
-            String summary = chatClient.prompt("""
-                    You are a research analyst. Analyze these sources about "%s".
-
-                    Extract and summarize:
-                    - Key facts and findings (cite the source URL for each)
-                    - Points where sources agree
-                    - Points where sources disagree or have caveats
-
-                    Sources:
-                    %s
-                    """.formatted(topic, sourcesText.toString()))
+            String prompt = analyzeChunkPrompt.formatted(topic, sourcesText.toString());
+            String summary = chatClient.prompt(prompt)
                     .call()
                     .content();
 
@@ -64,18 +56,8 @@ public class SynthesisService {
         log.info("  Compiling final report...");
         String allSummaries = String.join("\n\n---\n\n", chunkSummaries);
 
-        return chatClient.prompt("""
-                You are a senior research analyst compiling a briefing document about "%s".
-
-                Based on these extracted findings from multiple sources, produce:
-                1. An executive summary (2-3 paragraphs)
-                2. Key findings (list of concise bullet points, cite source URLs)
-                3. Major themes and areas of consensus
-                4. Open questions that need further research
-
-                Extracted findings:
-                %s
-                """.formatted(topic, allSummaries))
+        String finalPrompt = compileReportPrompt.formatted(topic, allSummaries);
+        return chatClient.prompt(finalPrompt)
                 .call()
                 .entity(Report.class);
     }

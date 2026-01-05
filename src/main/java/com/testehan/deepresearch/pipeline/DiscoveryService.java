@@ -21,33 +21,25 @@ public class DiscoveryService {
 
     private final Browserbase browserbase;
     private final ChatClient chatClient;
-    private final int maxSources;
+    private final int defaultMaxSources;
 
-    DiscoveryService(Browserbase browserbase, ChatClient.Builder builder, @Value("${research.max-sources:15}") int maxSources) {
+    DiscoveryService(Browserbase browserbase, ChatClient.Builder builder, 
+                     @Value("${research.max-sources:15}") int defaultMaxSources) {
         this.browserbase = browserbase;
         this.chatClient = builder.build();
-        this.maxSources = maxSources;
+        this.defaultMaxSources = defaultMaxSources;
     }
 
     public record DiscoveryResult(List<SearchCandidate> candidates, int queriesGenerated) {}
 
-    public DiscoveryResult discover(String topic) {
+    public DiscoveryResult discover(String topic, int maxSources, String discoveryPrompt) {
         log.info("--- Step 1: Search + Discover ---");
 
-        int numQueries = (maxSources <= 5) ? 1 : 2;
+        int effectiveMaxSources = maxSources > 0 ? maxSources : defaultMaxSources;
+        int numQueries = (effectiveMaxSources <= 5) ? 1 : 2;
 
-        List<String> queries = chatClient.prompt("""
-                Generate %d diverse search queries to thoroughly research this topic: "%s"
-
-                Vary the phrasing and angle. Include queries for:
-                - The topic itself
-                - Latest developments
-                - Current year trends
-                - Benchmarks or comparisons
-                - Case studies or real-world examples
-
-                Return only a JSON array of strings, nothing else.
-                """.formatted(numQueries, topic))
+        String prompt = discoveryPrompt.formatted(numQueries, topic);
+        List<String> queries = chatClient.prompt(prompt)
                 .call()
                 .entity(new ParameterizedTypeReference<>() {});
 
@@ -57,7 +49,7 @@ public class DiscoveryService {
 
         for (int i = 0; i < queries.size(); i++) {
             String query = queries.get(i);
-            var results = browserbase.search().web(query, maxSources).results();
+            var results = browserbase.search().web(query, effectiveMaxSources).results();
             log.info("  Query {}/{}: {} — {} results", i + 1, queries.size(), query, results.size());
             rawHits += results.size();
 

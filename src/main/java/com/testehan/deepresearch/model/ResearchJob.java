@@ -11,7 +11,8 @@ public record ResearchJob(
         String filePath,
         Instant createdAt,
         Instant completedAt,
-        JobResult result
+        JobResult result,
+        ResearchRequest config
 ) {
     public record JobResult(
             String executiveSummary,

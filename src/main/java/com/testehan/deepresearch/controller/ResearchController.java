@@ -1,6 +1,7 @@
 package com.testehan.deepresearch.controller;
 
 import com.testehan.deepresearch.model.ResearchJob;
+import com.testehan.deepresearch.model.ResearchRequest;
 import com.testehan.deepresearch.service.JobService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,8 +16,11 @@ public class ResearchController {
     }
 
     @PostMapping("/api/research")
-    public ResponseEntity<JobResponse> createResearch(@RequestParam String topic) {
-        var job = jobService.createJob(topic);
+    public ResponseEntity<JobResponse> createResearch(@RequestBody ResearchRequest request) {
+        if (request.topic() == null || request.topic().isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        var job = jobService.createJob(request);
         jobService.executeJob(job.jobId());
         return ResponseEntity.accepted().body(new JobResponse(job.jobId(), job.topic(), job.status().name()));
     }
