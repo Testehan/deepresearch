@@ -1,5 +1,7 @@
 package com.testehan.deepresearch.controller;
 
+import com.testehan.deepresearch.model.JobResponse;
+import com.testehan.deepresearch.model.JobStatusResponse;
 import com.testehan.deepresearch.model.ResearchJob;
 import com.testehan.deepresearch.model.ResearchRequest;
 import com.testehan.deepresearch.service.JobService;
@@ -47,26 +49,6 @@ public class ResearchController {
             ));
         } else {
             return ResponseEntity.ok(new JobStatusResponse(job.status().name(), null, null));
-        }
-    }
-
-    public record JobResponse(String jobId, String topic, String status) {}
-
-    public record JobStatusResponse(
-            String status,
-            ResearchJob.JobResult result,
-            String filePath,
-            String errorMessage
-    ) {
-        public JobStatusResponse(String status, ResearchJob.JobResult result, String filePath) {
-            this(status, result, filePath, null);
-        }
-
-        public JobStatusResponse(String status, ResearchJob.JobResult result, String filePath, String errorMessage) {
-            this.status = status;
-            this.result = result;
-            this.filePath = filePath;
-            this.errorMessage = errorMessage;
         }
     }
 }
