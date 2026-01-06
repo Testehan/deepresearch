@@ -49,11 +49,11 @@ public record ResearchRequest(
             """;
 
     public int resolvedMaxSources() {
-        return maxSources != null ? maxSources : DEFAULT_MAX_SOURCES;
+        return (maxSources != null && maxSources > 0) ? maxSources : DEFAULT_MAX_SOURCES;
     }
 
     public int resolvedChunkSize() {
-        return chunkSize != null ? chunkSize : DEFAULT_CHUNK_SIZE;
+        return (chunkSize != null && chunkSize > 0) ? chunkSize : DEFAULT_CHUNK_SIZE;
     }
 
     public String resolvedDiscoveryPrompt() {
