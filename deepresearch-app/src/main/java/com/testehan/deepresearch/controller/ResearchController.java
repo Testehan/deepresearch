@@ -24,7 +24,7 @@ public class ResearchController {
         }
         var job = jobService.createJob(request);
         jobService.executeJob(job.jobId());
-        return ResponseEntity.accepted().body(new JobResponse(job.jobId(), job.topic(), job.status().name()));
+        return ResponseEntity.accepted().body(new JobResponse(job.jobId(), job.topic(), job.status().toString()));
     }
 
     @GetMapping("/api/research/{jobId}")
@@ -36,19 +36,19 @@ public class ResearchController {
 
         if (job.status() == ResearchJob.JobStatus.COMPLETED) {
             return ResponseEntity.ok(new JobStatusResponse(
-                    job.status().name(),
+                    job.status().toString(),
                     job.result(),
                     job.filePath()
             ));
         } else if (job.status() == ResearchJob.JobStatus.FAILED) {
             return ResponseEntity.ok(new JobStatusResponse(
-                    job.status().name(),
+                    job.status().toString(),
                     null,
                     null,
                     job.errorMessage()
             ));
         } else {
-            return ResponseEntity.ok(new JobStatusResponse(job.status().name(), null, null));
+            return ResponseEntity.ok(new JobStatusResponse(job.status().toString(), null, null));
         }
     }
 }
