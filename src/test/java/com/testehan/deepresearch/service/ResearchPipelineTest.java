@@ -46,7 +46,7 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldCallAllServicesInOrder() {
-        var request = new ResearchRequest("test topic", 5, 2, "prompt", "prompt");
+        var request = new ResearchRequest("test topic", 5, 2, "prompt", "prompt", "prompt");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(new com.testehan.deepresearch.model.SearchCandidate("http://a.com", "A", "q")), 1);
@@ -70,7 +70,7 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldCreateReportWithCorrectDiagnostics() {
-        var request = new ResearchRequest("topic", 3, 2, "p", "p");
+        var request = new ResearchRequest("topic", 3, 2, "p", "p", "p");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(
@@ -97,7 +97,7 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldMapSourcesToReferences() {
-        var request = new ResearchRequest("topic", 1, 1, "p", "p");
+        var request = new ResearchRequest("topic", 1, 1, "p", "p", "p");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(List.of(), 1);
         when(discoveryService.discover(anyString(), anyInt(), anyString())).thenReturn(discoveryResult);

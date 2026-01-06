@@ -49,7 +49,7 @@ class ResearchPipeline {
                 sources,
                 request.resolvedChunkSize(),
                 request.resolvedSynthesisPrompt(),
-                request.compileReportPrompt()
+                request.resolvedCompileReportPrompt()
         );
 
         long duration = System.currentTimeMillis() - start;

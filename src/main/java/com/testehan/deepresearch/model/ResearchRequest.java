@@ -5,7 +5,8 @@ public record ResearchRequest(
     Integer maxSources,
     Integer chunkSize,
     String discoveryPrompt,
-    String synthesisPrompt
+    String synthesisPrompt,
+    String compileReportPrompt
 ) {
     public static final int DEFAULT_MAX_SOURCES = 15;
     public static final int DEFAULT_CHUNK_SIZE = 4;
@@ -64,7 +65,7 @@ public record ResearchRequest(
         return synthesisPrompt != null ? synthesisPrompt : DEFAULT_ANALYZE_CHUNK_PROMPT;
     }
 
-    public String compileReportPrompt() {
-        return DEFAULT_COMPILE_REPORT_PROMPT;
+    public String resolvedCompileReportPrompt() {
+        return compileReportPrompt != null ? compileReportPrompt : DEFAULT_COMPILE_REPORT_PROMPT;
     }
 }
