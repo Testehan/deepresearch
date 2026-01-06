@@ -4,6 +4,7 @@ import com.testehan.deepresearch.model.Diagnostics;
 import com.testehan.deepresearch.model.ResearchJob;
 import com.testehan.deepresearch.model.ResearchReport;
 import com.testehan.deepresearch.model.SourceReference;
+import com.testehan.deepresearch.model.ResearchRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,8 +32,7 @@ class JobServiceTest {
 
     @Test
     void createJob_shouldReturnPendingJob() {
-        var request = new com.testehan.deepresearch.model.ResearchRequest(
-                "test topic", null, null, null, null, null);
+        var request = new ResearchRequest("test topic", null, null, null, null, null);
 
         var job = jobService.createJob(request);
 
@@ -46,8 +46,7 @@ class JobServiceTest {
 
     @Test
     void getJob_shouldReturnJob() {
-        var request = new com.testehan.deepresearch.model.ResearchRequest(
-                "test topic", null, null, null, null, null);
+        var request = new ResearchRequest("test topic", null, null, null, null, null);
         var createdJob = jobService.createJob(request);
 
         var retrievedJob = jobService.getJob(createdJob.jobId());
@@ -63,9 +62,8 @@ class JobServiceTest {
     }
 
     @Test
-    void executeJob_shouldSetStatusToFailedOnException() {
-        var request = new com.testehan.deepresearch.model.ResearchRequest(
-                "test topic", null, null, null, null, null);
+    void executeJob_shouldHandleFailure() {
+        var request = new ResearchRequest("test topic", null, null, null, null, null);
         var job = jobService.createJob(request);
 
         when(pipeline.execute(any())).thenThrow(new RuntimeException("Pipeline failed"));
@@ -79,8 +77,7 @@ class JobServiceTest {
 
     @Test
     void executeJob_shouldCompleteSuccessfully() {
-        var request = new com.testehan.deepresearch.model.ResearchRequest(
-                "test topic", 5, null, null, null, null);
+        var request = new ResearchRequest("test topic", 5, null, null, null, null);
         var job = jobService.createJob(request);
 
         var mockReport = new ResearchReport(
@@ -100,20 +97,5 @@ class JobServiceTest {
         assertEquals(ResearchJob.JobStatus.COMPLETED, completedJob.status());
         assertNotNull(completedJob.result());
         assertEquals("Executive summary", completedJob.result().executiveSummary());
-    }
-
-    @Test
-    void executeJob_shouldHandleFailure() {
-        var request = new com.testehan.deepresearch.model.ResearchRequest(
-                "test topic", null, null, null, null, null);
-        var job = jobService.createJob(request);
-
-        when(pipeline.execute(any())).thenThrow(new RuntimeException("Pipeline error"));
-
-        jobService.executeJob(job.jobId());
-
-        var failedJob = jobService.getJob(job.jobId());
-        assertEquals(ResearchJob.JobStatus.FAILED, failedJob.status());
-        assertEquals("Pipeline error", failedJob.errorMessage());
     }
 }

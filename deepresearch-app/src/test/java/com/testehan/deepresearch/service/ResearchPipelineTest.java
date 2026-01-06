@@ -4,14 +4,14 @@ import com.testehan.deepresearch.model.Diagnostics;
 import com.testehan.deepresearch.model.FetchedSource;
 import com.testehan.deepresearch.model.ResearchReport;
 import com.testehan.deepresearch.model.ResearchRequest;
-import com.testehan.deepresearch.model.SourceReference;
+import com.testehan.deepresearch.model.SearchCandidate;
 import com.testehan.deepresearch.pipeline.DiscoveryService;
 import com.testehan.deepresearch.pipeline.RetrievalService;
 import com.testehan.deepresearch.pipeline.SynthesisService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -49,7 +49,7 @@ class ResearchPipelineTest {
         var request = new ResearchRequest("test topic", 5, 2, "prompt", "prompt", "prompt");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(
-                List.of(new com.testehan.deepresearch.model.SearchCandidate("http://a.com", "A", "q")), 1);
+                List.of(new SearchCandidate("http://a.com", "A", "q")), 1);
         when(discoveryService.discover(eq("test topic"), eq(5), anyString())).thenReturn(discoveryResult);
         
         var sources = List.of(new FetchedSource("http://a.com", "A", "content", 200));
@@ -74,8 +74,8 @@ class ResearchPipelineTest {
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(
-                        new com.testehan.deepresearch.model.SearchCandidate("http://1.com", "1", "q"),
-                        new com.testehan.deepresearch.model.SearchCandidate("http://2.com", "2", "q")
+                        new SearchCandidate("http://1.com", "1", "q"),
+                        new SearchCandidate("http://2.com", "2", "q")
                 ), 1);
         when(discoveryService.discover(anyString(), anyInt(), anyString())).thenReturn(discoveryResult);
         
