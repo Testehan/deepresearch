@@ -5,24 +5,15 @@ import java.util.List;
 
 public record ResearchJob<T>(
         String jobId,
-        String topic,
+        ResearchTopic topic,
         JobStatus status,
         String errorMessage,
         String filePath,
         Instant createdAt,
         Instant completedAt,
-        JobResult result,
+        ReportResult result,
         T config
 ) {
-    public record JobResult(
-            String executiveSummary,
-            List<String> keyFindings,
-            List<String> themes,
-            List<String> openQuestions,
-            List<SourceReference> sources,
-            Diagnostics diagnostics
-    ) {}
-
     public enum JobStatus {
         PENDING("pending"),
         RUNNING("running"),

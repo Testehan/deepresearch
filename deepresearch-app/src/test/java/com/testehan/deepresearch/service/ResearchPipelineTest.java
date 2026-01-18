@@ -1,10 +1,6 @@
 package com.testehan.deepresearch.service;
 
-import com.testehan.deepresearch.model.Diagnostics;
-import com.testehan.deepresearch.model.FetchedSource;
-import com.testehan.deepresearch.model.ResearchReport;
-import com.testehan.deepresearch.model.ResearchRequest;
-import com.testehan.deepresearch.model.SearchCandidate;
+import com.testehan.deepresearch.model.*;
 import com.testehan.deepresearch.pipeline.DiscoveryService;
 import com.testehan.deepresearch.pipeline.RetrievalService;
 import com.testehan.deepresearch.pipeline.SynthesisService;
@@ -46,7 +42,7 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldCallAllServicesInOrder() {
-        var request = new ResearchRequest("test topic", 5, 2, "prompt", "prompt", "prompt");
+        var request = new ResearchRequest(ResearchTopic.NEWS, "test topic", 5, 2, "prompt", "prompt", "prompt");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(new SearchCandidate("http://a.com", "A", "q")), 1);
@@ -62,7 +58,7 @@ class ResearchPipelineTest {
         var result = pipeline.execute(request);
 
         assertNotNull(result);
-        assertEquals("test topic", result.topic());
+        assertEquals(ResearchTopic.NEWS, result.topic());
         verify(discoveryService).discover(eq("test topic"), eq(5), anyString());
         verify(retrievalService).retrieve(any());
         verify(synthesisService).synthesize(eq("test topic"), any(), eq(2), anyString(), anyString());
@@ -70,7 +66,7 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldCreateReportWithCorrectDiagnostics() {
-        var request = new ResearchRequest("topic", 3, 2, "p", "p", "p");
+        var request = new ResearchRequest(ResearchTopic.NEWS, "topic", 3, 2, "p", "p", "p");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(
@@ -97,7 +93,7 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldMapSourcesToReferences() {
-        var request = new ResearchRequest("topic", 1, 1, "p", "p", "p");
+        var request = new ResearchRequest(ResearchTopic.NEWS, "topic", 1, 1, "p", "p", "p");
         
         var discoveryResult = new DiscoveryService.DiscoveryResult(List.of(), 1);
         when(discoveryService.discover(anyString(), anyInt(), anyString())).thenReturn(discoveryResult);

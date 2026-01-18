@@ -1,7 +1,7 @@
 package com.testehan.deepresearch.service;
 
 import com.testehan.deepresearch.model.Diagnostics;
-import com.testehan.deepresearch.model.ResearchReport;
+import com.testehan.deepresearch.model.NewsReport;
 import com.testehan.deepresearch.model.ResearchRequest;
 import com.testehan.deepresearch.model.SourceReference;
 import com.testehan.deepresearch.pipeline.DiscoveryService;
@@ -33,19 +33,19 @@ class ResearchPipeline {
         this.synthesisService = synthesisService;
     }
 
-    ResearchReport execute(ResearchRequest request) {
+    NewsReport execute(ResearchRequest request) {
         long start = System.currentTimeMillis();
-        log.info("Researching: \"{}\"", request.topic());
+        log.info("Researching: \"{}\"", request.subject());
 
         var discoveryResult = discoveryService.discover(
-                request.topic(),
+                request.subject(),
                 request.resolvedMaxSources(),
                 request.resolvedDiscoveryPrompt()
         );
         var candidates = discoveryResult.candidates();
         var sources = retrievalService.retrieve(candidates);
         var report = synthesisService.synthesize(
-                request.topic(),
+                request.subject(),
                 sources,
                 request.resolvedChunkSize(),
                 request.resolvedSynthesisPrompt(),
@@ -66,7 +66,7 @@ class ResearchPipeline {
                 sources.size(), 
                 duration);
 
-        var researchReport = new ResearchReport(
+        var newsReport = new NewsReport(
                 request.topic(),
                 report.executiveSummary(),
                 report.keyFindings(),
@@ -76,16 +76,16 @@ class ResearchPipeline {
                 diagnostics
         );
 
-        writeReport(researchReport);
-        return researchReport;
+        writeReport(newsReport);
+        return newsReport;
     }
 
-    private void writeReport(ResearchReport report) {
+    public void writeReport(NewsReport report) {
         try {
             var dir = Path.of("reports");
             Files.createDirectories(dir);
 
-            String slug = report.topic().toLowerCase().replaceAll("[^a-z0-9]+", "-");
+            String slug = report.topic().toString().replaceAll("[^a-z0-9]+", "-");
             String filename = "%s-%s.md".formatted(LocalDate.now(), slug);
             Path file = dir.resolve(filename);
 

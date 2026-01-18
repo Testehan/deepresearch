@@ -17,7 +17,7 @@ public class ResearchController {
 
     @PostMapping("/api/research")
     public ResponseEntity<JobResponse> createResearch(@RequestBody ResearchRequest request) {
-        if (request.topic() == null || request.topic().isBlank()) {
+        if (request.topic() == null || request.subject() == null || request.subject().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
         var job = jobService.createJob(request);

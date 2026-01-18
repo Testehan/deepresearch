@@ -2,6 +2,7 @@ package com.testehan.deepresearch.service;
 
 import com.testehan.deepresearch.model.*;
 import com.testehan.deepresearch.pipeline.DocumentProcessingService;
+import com.testehan.deepresearch.pipeline.SynthesisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -13,8 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class JobService {
@@ -24,10 +25,14 @@ public class JobService {
     private final Map<String, ResearchJob<?>> jobs = new ConcurrentHashMap<>();
     private final ResearchPipeline pipeline;
     private final DocumentProcessingService documentProcessingService;
+    private final SynthesisService synthesisService;
 
-    public JobService(ResearchPipeline pipeline, DocumentProcessingService documentProcessingService) {
+    public JobService(ResearchPipeline pipeline, 
+                      DocumentProcessingService documentProcessingService,
+                      SynthesisService synthesisService) {
         this.pipeline = pipeline;
         this.documentProcessingService = documentProcessingService;
+        this.synthesisService = synthesisService;
     }
 
     public ResearchJob<ResearchRequest> createJob(ResearchRequest request) {
@@ -44,7 +49,7 @@ public class JobService {
                 request
         );
         jobs.put(jobId, job);
-        log.info("Created job {} for topic: {}", jobId, request.topic());
+        log.info("Created job {} for subject: {}", jobId, request.subject());
         return job;
     }
 
@@ -52,7 +57,7 @@ public class JobService {
         String jobId = UUID.randomUUID().toString();
         var job = new ResearchJob<>(
                 jobId,
-                filename,
+                request.topic(),
                 ResearchJob.JobStatus.PENDING,
                 null,
                 null,
@@ -94,26 +99,9 @@ public class JobService {
 
         try {
             ResearchRequest request = job.config();
-            ResearchReport report = pipeline.execute(request);
+            NewsReport report = pipeline.execute(request);
             
-            var result = new ResearchJob.JobResult(
-                    report.executiveSummary(),
-                    report.keyFindings(),
-                    report.themes(),
-                    report.openQuestions(),
-                    report.sources().stream()
-                            .map(s -> new SourceReference(s.url(), s.title()))
-                            .toList(),
-                    new Diagnostics(
-                            report.diagnostics().queriesGenerated(),
-                            report.diagnostics().urlsDiscovered(),
-                            report.diagnostics().urlsFetched(),
-                            report.diagnostics().sourcesUsed(),
-                            report.diagnostics().durationMs()
-                    )
-            );
-
-            String filePath = findReportFile(request.topic());
+            String filePath = findReportFile(request.subject());
 
             jobs.put(jobId, new ResearchJob<>(
                     jobId,
@@ -123,7 +111,7 @@ public class JobService {
                     filePath,
                     job.createdAt(),
                     Instant.now(),
-                    result,
+                    report,
                     job.config()
             ));
             log.info("Job {} completed successfully", jobId);
@@ -166,6 +154,7 @@ public class JobService {
         ));
         log.info("Starting execution for document job {}", jobId);
 
+        long start = System.currentTimeMillis();
         try {
             var images = documentProcessingService.convertPdfToImages(pdfFile);
             
@@ -178,12 +167,28 @@ public class JobService {
             }
             log.info("Saved {} images to {}", images.size(), jobDir);
 
-            // Placeholder for full document processing logic (OCR, synthesis, etc.)
-            // For now, we just mark it as completed with minimal results
-            var result = new ResearchJob.JobResult(
-                    "Document processed successfully. Saved " + images.size() + " images.",
-                    null, null, null, null, 
-                    new Diagnostics(0, 0, 0, 0, 0)
+            // Synthesize content from images
+            ResearchDocumentRequest config = job.config();
+            var synthesisReport = synthesisService.synthesizeDocument(
+                    images, 
+                    config.resolvedPagePrompt(), 
+                    config.resolvedCompileReportPrompt());
+
+            long duration = System.currentTimeMillis() - start;
+
+            log.info(" synthesisReport: {}", synthesisReport);
+
+            var finalReport = new EarningsPresentationReport(
+                    synthesisReport.companyMetadata(),
+                    synthesisReport.headlineFinancials(),
+                    synthesisReport.cashAndCapital(),
+                    synthesisReport.industrySpecificKpis(),
+                    synthesisReport.marketAndGrowthOpportunity(),
+                    synthesisReport.revenueQualityAndRisk(),
+                    synthesisReport.debtAndLeverage(),
+                    synthesisReport.corporateActions(),
+                    synthesisReport.forwardLookingGuidance(),
+                    synthesisReport.strategicHighlights()
             );
 
             jobs.put(jobId, new ResearchJob<>(
@@ -194,7 +199,7 @@ public class JobService {
                     jobDir.toString(),
                     job.createdAt(),
                     Instant.now(),
-                    result,
+                    finalReport,
                     job.config()
             ));
             log.info("Document job {} completed successfully", jobId);

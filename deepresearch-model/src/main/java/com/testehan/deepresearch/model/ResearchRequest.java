@@ -1,7 +1,8 @@
 package com.testehan.deepresearch.model;
 
 public record ResearchRequest(
-    String topic,
+    ResearchTopic topic,
+    String subject,
     Integer maxSources,
     Integer chunkSize,
     String discoveryPrompt,
