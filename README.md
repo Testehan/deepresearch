@@ -1,104 +1,110 @@
-# Deep Research
+# DeepResearch Component
 
-An AI-powered research agent built with Spring Boot, Spring AI, and [Browserbase](https://www.browserbase.com/).
-Give it a topic, and it searches the web, fetches pages, and synthesizes a structured research report, all in a single API call.
+DeepResearch is a Spring Boot application designed to perform automated research using Large Language Models (LLMs). It supports two primary modes: web-based research and document-based analysis (specifically optimized for earnings presentations).
 
-Inspired by [aarondfrancis/deep-research](https://github.com/aarondfrancis/deep-research).
+## Features
 
-## How It Works
-
-The research pipeline has three stages:
-
-1. **Discover** — An LLM generates 5 diverse search queries for your topic, then executes each via Browserbase's Search API. URLs are deduplicated across queries.
-2. **Fetch** — Pages are fetched in parallel using virtual threads. A `@ConcurrencyLimit` annotation throttles requests to avoid rate limiting.
-3. **Synthesize** — Sources are analyzed in chunks by the LLM, then compiled into a final report with an executive summary, key findings, themes, and open questions.
-
-Reports are saved as Markdown files in the `reports/` directory.
+- **Web Research (News)**: Automatically generates search queries, discovers relevant URLs, fetches content, and synthesizes a comprehensive report on a given subject.
+- **Document Analysis (Earnings Presentations)**: Processes PDF documents (e.g., earnings presentations) by converting pages to images, analyzing them with vision-capable LLMs, and compiling a detailed financial report.
+- **Polymorphic Reporting**: Generates structured reports based on the research topic:
+    - `NewsReport`: Focuses on findings, themes, and open questions with full source citations.
+    - `EarningsPresentationReport`: Extracts key financials, KPIs, guidance, and strategic highlights from financial documents.
+- **Intelligent Processing**:
+    - **Appendix Detection**: Automatically identifies the start of appendix sections in documents to skip irrelevant technical schedules and optimize processing time.
+    - **Retry Mechanism**: Implements robust retry logic for LLM JSON output to handle malformed responses during complex report compilation.
+- **Async Job Execution**: Uses Spring's `@Async` and Virtual Threads to handle long-running research tasks without blocking the API.
 
 ## Prerequisites
 
-- Java 26+
-- [Browserbase](https://www.browserbase.com/) account and API key
-- OpenAI API key
+- **Java 21+**: The project is configured to use modern Java features (Virtual Threads).
+- **Maven**: For building and dependency management.
+- **Ollama**: Must be running locally or at a reachable URL with a vision-capable model (e.g., `gemma4:26b` or `llama3-vision`).
+- **Browserbase**: Required for web discovery and fetching (API key required).
 
-## Quick Start
+## Configuration
 
-Set your API keys:
+The application is configured via `deepresearch-app/src/main/resources/application.properties`. Key properties include:
 
-```bash
-export OPENAI_API_KEY=your-openai-key
-export BROWSERBASE_API_KEY=your-browserbase-key
+| Property | Description | Default |
+|----------|-------------|---------|
+| `server.port` | The port the application runs on. | `8081` |
+| `spring.ai.ollama.base-url` | URL for the Ollama service. | `http://localhost:11434` |
+| `spring.ai.ollama.chat.options.model` | The LLM model to use. | `gemma4:26b` |
+| `browserbase.api-key` | API key for Browserbase fetching. | (Required) |
+| `research.max-sources` | Default limit for discovered web sources. | `5` |
+
+### Secrets
+You can provide sensitive keys in a `secrets.properties` file in the project root:
+```properties
+browserbase.api-key=your_api_key_here
 ```
 
-Run the app:
+## API Endpoints
 
-```bash
-./mvnw spring-boot:run
-```
+### 1. Web Research
+`POST /api/research`
 
-Make a request:
+Starts a web research job.
 
-```bash
-curl "http://localhost:8080/api/research?topic=state+of+browser+based+AI+agents"
-```
-
-Watch the console for real-time progress, then check `reports/` for the markdown output.
-
-## Browserbase Spring Boot Starter
-
-This project uses the [Browserbase Spring Boot Starter](https://github.com/danvega/browserbase-spring-boot-starter) which provides:
-
-- **Search API** — `browserbase.search().web(query, numResults)` for web search
-- **Fetch API** — `browserbase.fetchAPI().create(url)` for page content retrieval
-
-The starter auto-configures a `Browserbase` bean from your API key in `application.yaml`.
-
-## API
-
-**GET** `/api/research?topic={topic}`
-
-Returns a JSON report:
-
+**Request Body:**
 ```json
 {
-  "topic": "state of browser-based AI agents",
-  "executiveSummary": "...",
-  "keyFindings": ["...", "..."],
-  "themes": ["...", "..."],
-  "openQuestions": ["...", "..."],
-  "sources": [
-    { "url": "https://...", "title": "..." }
-  ],
-  "diagnostics": {
-    "queriesGenerated": 5,
-    "urlsDiscovered": 47,
-    "urlsFetched": 28,
-    "sourcesUsed": 28,
-    "durationMs": 45000
+  "topic": "news",
+  "subject": "The future of quantum computing",
+  "maxSources": 10
+}
+```
+
+### 2. Document Research
+`POST /api/research/document`
+
+Analyzes an uploaded PDF document.
+
+**Form Data:**
+- `pdf`: The PDF file (multipart/form-data).
+- `request`: A JSON part containing `ResearchDocumentRequest`.
+
+**Request Part (`request`):**
+```json
+{
+  "topic": "earnings_presentation"
+}
+```
+
+### 3. Job Status & Results
+`GET /api/research/{jobId}`
+
+Retrieves the current status or the final result of a research job.
+
+**Response (News):**
+```json
+{
+  "status": "completed",
+  "reportType": "news",
+  "result": {
+    "topic": "news",
+    "executiveSummary": "...",
+    "keyFindings": ["..."],
+    "sources": [{"url": "...", "title": "..."}]
   }
 }
 ```
 
-## Configuration
-
-`src/main/resources/application.yaml`:
-
-```yaml
-spring:
-  threads:
-    virtual:
-      enabled: true
-  ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
-
-browserbase:
-  api-key: ${BROWSERBASE_API_KEY}
+**Response (Earnings Presentation):**
+```json
+{
+  "status": "completed",
+  "reportType": "earnings_presentation",
+  "result": {
+    "company_metadata": { "company_name": "...", "report_period": "..." },
+    "headline_financials": { "total_revenue": "...", "yoy_revenue_growth": "..." },
+    "strategic_highlights": ["..."]
+  }
+}
 ```
 
-## Tech Stack
+## Running the Application
 
-- **Spring Boot 4** with virtual threads
-- **Spring AI** for LLM integration (structured output, ChatClient)
-- **Browserbase** for web search and page fetching
-- **`@ConcurrencyLimit`** (Spring Framework 7) for API rate limiting
+1. Ensure Ollama is running and the required model is pulled.
+2. Build the project: `./mvnw clean install`
+3. Run the application: `./mvnw spring-boot:run -pl deepresearch-app`

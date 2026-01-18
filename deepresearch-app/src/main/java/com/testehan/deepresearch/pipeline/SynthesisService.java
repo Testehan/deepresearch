@@ -64,7 +64,7 @@ public class SynthesisService {
                 .call()
                 .entity(Report.class);
     }
-// todo outputul ar trebui sa fie acel json din compileReportPrompt..
+
     public EarningsPresentationReport synthesizeDocument(List<byte[]> images, String pagePrompt, String compileReportPrompt) {
         log.info("--- Step: Document Synthesis ---");
 
@@ -84,14 +84,68 @@ public class SynthesisService {
 
             log.info("Page {} summary: {}", pageNum, summary);
             pageSummaries.add("Page " + pageNum + ":\n" + summary);
+
+            // Check if this page is the start of an appendix (Hybrid Approach)
+            String appendixCheckPrompt = """
+                Analyze the following summary and determine if it represents the start of the 'Appendix' section of an earnings presentation.
+                
+                These sections typically follow the main business narrative and are characterized by:
+                1. Explicit headers like 'Appendix'.
+
+                Respond in JSON format:
+                {
+                  "isAppendix": boolean,
+                  "explanation": "Briefly explain why or why not, referencing the specific markers found",
+                  "triggerField": "The specific field or text that caused this decision (null if not an appendix)"
+                }
+                
+                Summary:
+                %s
+                """.formatted(summary);
+            
+            try {
+                record AppendixDetection(boolean isAppendix, String explanation, String triggerField) {}
+                
+                var detection = chatClient.prompt(appendixCheckPrompt)
+                        .call()
+                        .entity(AppendixDetection.class);
+                
+                if (detection != null) {
+                    log.info("  Appendix check - isAppendix: {}, explanation: {}, triggerField: {}", 
+                            detection.isAppendix(), detection.explanation(), detection.triggerField());
+                    
+                    if (detection.isAppendix()) {
+                        log.info("  Appendix detected on page {}. Skipping remaining pages.", pageNum);
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("  Failed to perform appendix check for page {}: {}", pageNum, e.getMessage());
+            }
         }
 
         log.info("  Compiling final document report...");
         String allSummaries = String.join("\n\n---\n\n", pageSummaries);
 
-        String finalPrompt = compileReportPrompt.formatted(allSummaries);
-        return chatClient.prompt(finalPrompt)
-                .call()
-                .entity(EarningsPresentationReport.class);
+        String finalPromptTemplate = compileReportPrompt + "\n\nExtracted findings:\n%s";
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                log.info("  Compiling final document report (Attempt {}/{})...", attempt, maxRetries);
+                String finalPrompt = compileReportPrompt.formatted(allSummaries);
+                if (attempt > 1) {
+                    finalPrompt = "RETRY HINT: Your previous response was not a valid JSON. Please ensure all quotes are closed and colons are used correctly.\n" + finalPrompt;
+                }
+                return chatClient.prompt(finalPrompt)
+                        .call()
+                        .entity(EarningsPresentationReport.class);
+            } catch (Exception e) {
+                log.error("  Attempt {} failed to compile final report: {}", attempt, e.getMessage());
+                if (attempt == maxRetries) {
+                    throw e;
+                }
+            }
+        }
+        return null; // Should not be reached as we throw on the last attempt
     }
 }
