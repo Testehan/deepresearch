@@ -1,10 +1,7 @@
 package com.testehan.deepresearch.service;
 
-import com.testehan.deepresearch.model.Diagnostics;
-import com.testehan.deepresearch.model.ResearchJob;
-import com.testehan.deepresearch.model.ResearchReport;
-import com.testehan.deepresearch.model.SourceReference;
-import com.testehan.deepresearch.model.ResearchRequest;
+import com.testehan.deepresearch.model.*;
+import com.testehan.deepresearch.pipeline.DocumentProcessingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,11 +20,14 @@ class JobServiceTest {
     @Mock
     private ResearchPipeline pipeline;
 
+    @Mock
+    private DocumentProcessingService documentProcessingService;
+
     private JobService jobService;
 
     @BeforeEach
     void setUp() {
-        jobService = new JobService(pipeline);
+        jobService = new JobService(pipeline, documentProcessingService);
     }
 
     @Test

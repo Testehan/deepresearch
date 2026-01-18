@@ -3,7 +3,7 @@ package com.testehan.deepresearch.model;
 import java.time.Instant;
 import java.util.List;
 
-public record ResearchJob(
+public record ResearchJob<T>(
         String jobId,
         String topic,
         JobStatus status,
@@ -12,7 +12,7 @@ public record ResearchJob(
         Instant createdAt,
         Instant completedAt,
         JobResult result,
-        ResearchRequest config
+        T config
 ) {
     public record JobResult(
             String executiveSummary,

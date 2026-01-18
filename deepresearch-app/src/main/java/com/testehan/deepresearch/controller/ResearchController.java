@@ -1,12 +1,10 @@
 package com.testehan.deepresearch.controller;
 
-import com.testehan.deepresearch.model.JobResponse;
-import com.testehan.deepresearch.model.JobStatusResponse;
-import com.testehan.deepresearch.model.ResearchJob;
-import com.testehan.deepresearch.model.ResearchRequest;
+import com.testehan.deepresearch.model.*;
 import com.testehan.deepresearch.service.JobService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 public class ResearchController {
@@ -24,6 +22,21 @@ public class ResearchController {
         }
         var job = jobService.createJob(request);
         jobService.executeJob(job.jobId());
+        return ResponseEntity.accepted().body(new JobResponse(job.jobId(), job.topic(), job.status().toString()));
+    }
+
+    @PostMapping("/api/research/document")
+    public ResponseEntity<JobResponse> createDocumentResearch(
+            @RequestPart("pdf") MultipartFile pdf,
+            @RequestPart("request") ResearchDocumentRequest request) {
+        
+        if (pdf.isEmpty() || pdf.getContentType() == null || !pdf.getContentType().equalsIgnoreCase("application/pdf")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        var job = jobService.createDocumentJob(pdf.getOriginalFilename(), request);
+        jobService.executeDocumentJob(job.jobId(), pdf);
+        
         return ResponseEntity.accepted().body(new JobResponse(job.jobId(), job.topic(), job.status().toString()));
     }
 
