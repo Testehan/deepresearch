@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: deepresearch
+  threads:
+    virtual:
+      enabled: true
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+
+
+browserbase:
+  api-key: ${BROWSERBASE_API_KEY}
