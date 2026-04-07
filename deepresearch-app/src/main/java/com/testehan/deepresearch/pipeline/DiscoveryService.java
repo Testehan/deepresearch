@@ -5,8 +5,8 @@ import dev.danvega.browserbase.Browserbase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -23,10 +23,10 @@ public class DiscoveryService {
     private final ChatClient chatClient;
     private final int defaultMaxSources;
 
-    DiscoveryService(Browserbase browserbase, ChatClient.Builder builder, 
+    DiscoveryService(Browserbase browserbase, ChatClient chatClient,
                      @Value("${research.max-sources:15}") int defaultMaxSources) {
         this.browserbase = browserbase;
-        this.chatClient = builder.build();
+        this.chatClient = chatClient;
         this.defaultMaxSources = defaultMaxSources;
     }
 

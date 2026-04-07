@@ -19,8 +19,8 @@ public class SynthesisService {
 
     private final ChatClient chatClient;
 
-    SynthesisService(ChatClient.Builder builder) {
-        this.chatClient = builder.build();
+    SynthesisService(ChatClient chatClient) {
+        this.chatClient = chatClient;
     }
 
     public record Report(
