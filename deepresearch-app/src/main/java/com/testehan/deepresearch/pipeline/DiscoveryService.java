@@ -1,10 +1,13 @@
 package com.testehan.deepresearch.pipeline;
 
+import com.testehan.deepresearch.model.LlmUsage;
 import com.testehan.deepresearch.model.SearchCandidate;
+import com.testehan.deepresearch.service.LlmCostService;
 import dev.danvega.browserbase.Browserbase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -21,27 +24,31 @@ public class DiscoveryService {
 
     private final Browserbase browserbase;
     private final ChatClient chatClient;
+    private final LlmCostService llmCostService;
     private final int defaultMaxSources;
 
-    DiscoveryService(Browserbase browserbase, ChatClient chatClient,
+    DiscoveryService(Browserbase browserbase, ChatClient chatClient, LlmCostService llmCostService,
                      @Value("${research.max-sources:15}") int defaultMaxSources) {
         this.browserbase = browserbase;
         this.chatClient = chatClient;
+        this.llmCostService = llmCostService;
         this.defaultMaxSources = defaultMaxSources;
     }
 
     public record DiscoveryResult(List<SearchCandidate> candidates, int queriesGenerated) {}
 
-    public DiscoveryResult discover(String topic, int maxSources, String discoveryPrompt) {
+    public DiscoveryResult discover(String topic, int maxSources, String discoveryPrompt, LlmUsage usage) {
         log.info("--- Step 1: Search + Discover ---");
 
         int effectiveMaxSources = maxSources > 0 ? maxSources : defaultMaxSources;
         int numQueries = (effectiveMaxSources <= 5) ? 1 : 2;
 
-        String prompt = discoveryPrompt.formatted(numQueries, topic);
-        List<String> queries = chatClient.prompt(prompt)
-                .call()
-                .entity(new ParameterizedTypeReference<>() {});
+        var converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<String>>() {});
+        String prompt = discoveryPrompt.formatted(numQueries, topic) + "\n\n" + converter.getFormat();
+
+        var chatResponse = chatClient.prompt(prompt).call().chatResponse();
+        llmCostService.logAndAccumulate(chatResponse, "discovery", usage);
+        List<String> queries = converter.convert(chatResponse.getResult().getOutput().getText());
 
         int rawHits = 0;
         Set<String> seenUrls = new LinkedHashSet<>();

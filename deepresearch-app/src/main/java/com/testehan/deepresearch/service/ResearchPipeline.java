@@ -1,6 +1,7 @@
 package com.testehan.deepresearch.service;
 
 import com.testehan.deepresearch.model.Diagnostics;
+import com.testehan.deepresearch.model.LlmUsage;
 import com.testehan.deepresearch.model.NewsReport;
 import com.testehan.deepresearch.model.ResearchRequest;
 import com.testehan.deepresearch.model.SourceReference;
@@ -33,14 +34,15 @@ class ResearchPipeline {
         this.synthesisService = synthesisService;
     }
 
-    NewsReport execute(ResearchRequest request) {
+    NewsReport execute(ResearchRequest request, LlmUsage usage) {
         long start = System.currentTimeMillis();
         log.info("Researching: \"{}\"", request.subject());
 
         var discoveryResult = discoveryService.discover(
                 request.subject(),
                 request.resolvedMaxSources(),
-                request.resolvedDiscoveryPrompt()
+                request.resolvedDiscoveryPrompt(),
+                usage
         );
         var candidates = discoveryResult.candidates();
         var sources = retrievalService.retrieve(candidates);
@@ -49,7 +51,8 @@ class ResearchPipeline {
                 sources,
                 request.resolvedChunkSize(),
                 request.resolvedSynthesisPrompt(),
-                request.resolvedCompileReportPrompt()
+                request.resolvedCompileReportPrompt(),
+                usage
         );
 
         long duration = System.currentTimeMillis() - start;

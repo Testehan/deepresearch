@@ -51,7 +51,9 @@ public class ResearchController {
             return ResponseEntity.ok(new JobStatusResponse(
                     job.status().toString(),
                     job.result(),
-                    job.filePath()
+                    job.filePath(),
+                    null,
+                    job.llmUsage()
             ));
         } else if (job.status() == ResearchJob.JobStatus.FAILED) {
             return ResponseEntity.ok(new JobStatusResponse(

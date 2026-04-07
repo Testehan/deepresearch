@@ -2,9 +2,13 @@ package com.testehan.deepresearch.pipeline;
 
 import com.testehan.deepresearch.model.EarningsPresentationReport;
 import com.testehan.deepresearch.model.FetchedSource;
+import com.testehan.deepresearch.model.LlmUsage;
+import com.testehan.deepresearch.service.LlmCostService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
@@ -18,9 +22,11 @@ public class SynthesisService {
     private static final Logger log = LoggerFactory.getLogger(SynthesisService.class);
 
     private final ChatClient chatClient;
+    private final LlmCostService llmCostService;
 
-    SynthesisService(ChatClient chatClient) {
+    SynthesisService(ChatClient chatClient, LlmCostService llmCostService) {
         this.chatClient = chatClient;
+        this.llmCostService = llmCostService;
     }
 
     public record Report(
@@ -30,8 +36,8 @@ public class SynthesisService {
             List<String> openQuestions
     ) {}
 
-    public Report synthesize(String topic, List<FetchedSource> sources, int chunkSize, 
-                             String analyzeChunkPrompt, String compileReportPrompt) {
+    public Report synthesize(String topic, List<FetchedSource> sources, int chunkSize,
+                             String analyzeChunkPrompt, String compileReportPrompt, LlmUsage usage) {
         log.info("--- Step 3: Synthesize ---");
 
         List<String> chunkSummaries = new ArrayList<>();
@@ -48,24 +54,27 @@ public class SynthesisService {
             }
 
             String prompt = analyzeChunkPrompt.formatted(topic, sourcesText.toString());
-            String summary = chatClient.prompt(prompt)
-                    .call()
-                    .content();
+            ChatResponse response = chatClient.prompt(prompt).call().chatResponse();
+            llmCostService.logAndAccumulate(response, "synthesis_chunk", usage);
+            String summary = response.getResult().getOutput().getText();
 
-            log.info("Adding summary {}" , summary);
+            log.info("Adding summary {}", summary);
             chunkSummaries.add(summary);
         }
 
         log.info("  Compiling final report...");
         String allSummaries = String.join("\n\n---\n\n", chunkSummaries);
-
         String finalPrompt = compileReportPrompt.formatted(topic, allSummaries);
-        return chatClient.prompt(finalPrompt)
-                .call()
-                .entity(Report.class);
+
+        var converter = new BeanOutputConverter<>(Report.class);
+        ChatResponse finalResponse = chatClient.prompt(finalPrompt + "\n\n" + converter.getFormat())
+                .call().chatResponse();
+        llmCostService.logAndAccumulate(finalResponse, "synthesis_compile", usage);
+        return converter.convert(finalResponse.getResult().getOutput().getText());
     }
 
-    public EarningsPresentationReport synthesizeDocument(List<byte[]> images, String pagePrompt, String compileReportPrompt) {
+    public EarningsPresentationReport synthesizeDocument(List<byte[]> images, String pagePrompt,
+                                                         String compileReportPrompt, LlmUsage usage) {
         log.info("--- Step: Document Synthesis ---");
 
         List<String> pageSummaries = new ArrayList<>();
@@ -75,20 +84,20 @@ public class SynthesisService {
 
             String prompt = pagePrompt.formatted(pageNum, "");
             byte[] imageBytes = images.get(i);
-            
-            String summary = chatClient.prompt()
+
+            ChatResponse pageResponse = chatClient.prompt()
                     .user(u -> u.text(prompt)
                             .media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(imageBytes)))
-                    .call()
-                    .content();
+                    .call().chatResponse();
+            llmCostService.logAndAccumulate(pageResponse, "document_page", usage);
+            String summary = pageResponse.getResult().getOutput().getText();
 
             log.info("Page {} summary: {}", pageNum, summary);
             pageSummaries.add("Page " + pageNum + ":\n" + summary);
 
-            // Check if this page is the start of an appendix (Hybrid Approach)
             String appendixCheckPrompt = """
                 Analyze the following summary and determine if it represents the start of the 'Appendix' section of an earnings presentation.
-                
+
                 These sections typically follow the main business narrative and are characterized by:
                 1. Explicit headers like 'Appendix'.
 
@@ -98,22 +107,25 @@ public class SynthesisService {
                   "explanation": "Briefly explain why or why not, referencing the specific markers found",
                   "triggerField": "The specific field or text that caused this decision (null if not an appendix)"
                 }
-                
+
                 Summary:
                 %s
                 """.formatted(summary);
-            
+
             try {
                 record AppendixDetection(boolean isAppendix, String explanation, String triggerField) {}
-                
-                var detection = chatClient.prompt(appendixCheckPrompt)
-                        .call()
-                        .entity(AppendixDetection.class);
-                
+
+                var appendixConverter = new BeanOutputConverter<>(AppendixDetection.class);
+                ChatResponse appendixResponse = chatClient.prompt(appendixCheckPrompt + "\n\n" + appendixConverter.getFormat())
+                        .call().chatResponse();
+                llmCostService.logAndAccumulate(appendixResponse, "document_appendix_check", usage);
+
+                var detection = appendixConverter.convert(appendixResponse.getResult().getOutput().getText());
+
                 if (detection != null) {
-                    log.info("  Appendix check - isAppendix: {}, explanation: {}, triggerField: {}", 
+                    log.info("  Appendix check - isAppendix: {}, explanation: {}, triggerField: {}",
                             detection.isAppendix(), detection.explanation(), detection.triggerField());
-                    
+
                     if (detection.isAppendix()) {
                         log.info("  Appendix detected on page {}. Skipping remaining pages.", pageNum);
                         break;
@@ -127,18 +139,18 @@ public class SynthesisService {
         log.info("  Compiling final document report...");
         String allSummaries = String.join("\n\n---\n\n", pageSummaries);
 
-        String finalPromptTemplate = compileReportPrompt + "\n\nExtracted findings:\n%s";
+        var reportConverter = new BeanOutputConverter<>(EarningsPresentationReport.class);
         int maxRetries = 3;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 log.info("  Compiling final document report (Attempt {}/{})...", attempt, maxRetries);
-                String finalPrompt = compileReportPrompt.formatted(allSummaries);
+                String finalPrompt = compileReportPrompt.formatted(allSummaries) + "\n\n" + reportConverter.getFormat();
                 if (attempt > 1) {
                     finalPrompt = "RETRY HINT: Your previous response was not a valid JSON. Please ensure all quotes are closed and colons are used correctly.\n" + finalPrompt;
                 }
-                return chatClient.prompt(finalPrompt)
-                        .call()
-                        .entity(EarningsPresentationReport.class);
+                ChatResponse compileResponse = chatClient.prompt(finalPrompt).call().chatResponse();
+                llmCostService.logAndAccumulate(compileResponse, "document_compile", usage);
+                return reportConverter.convert(compileResponse.getResult().getOutput().getText());
             } catch (Exception e) {
                 log.error("  Attempt {} failed to compile final report: {}", attempt, e.getMessage());
                 if (attempt == maxRetries) {
@@ -146,6 +158,6 @@ public class SynthesisService {
                 }
             }
         }
-        return null; // Should not be reached as we throw on the last attempt
+        return null;
     }
 }

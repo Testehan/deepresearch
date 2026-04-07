@@ -27,7 +27,7 @@ public class JobService {
     private final DocumentProcessingService documentProcessingService;
     private final SynthesisService synthesisService;
 
-    public JobService(ResearchPipeline pipeline, 
+    public JobService(ResearchPipeline pipeline,
                       DocumentProcessingService documentProcessingService,
                       SynthesisService synthesisService) {
         this.pipeline = pipeline;
@@ -46,6 +46,7 @@ public class JobService {
                 Instant.now(),
                 null,
                 null,
+                null,
                 request
         );
         jobs.put(jobId, job);
@@ -62,6 +63,7 @@ public class JobService {
                 null,
                 null,
                 Instant.now(),
+                null,
                 null,
                 null,
                 request
@@ -93,14 +95,16 @@ public class JobService {
                 job.createdAt(),
                 null,
                 null,
+                null,
                 job.config()
         ));
         log.info("Starting execution for job {}", jobId);
 
         try {
             ResearchRequest request = job.config();
-            NewsReport report = pipeline.execute(request);
-            
+            LlmUsage usage = new LlmUsage();
+            NewsReport report = pipeline.execute(request, usage);
+
             String filePath = findReportFile(request.subject());
 
             jobs.put(jobId, new ResearchJob<>(
@@ -112,6 +116,7 @@ public class JobService {
                     job.createdAt(),
                     Instant.now(),
                     report,
+                    usage,
                     job.config()
             ));
             log.info("Job {} completed successfully", jobId);
@@ -126,6 +131,7 @@ public class JobService {
                     null,
                     job.createdAt(),
                     Instant.now(),
+                    null,
                     null,
                     job.config()
             ));
@@ -150,6 +156,7 @@ public class JobService {
                 job.createdAt(),
                 null,
                 null,
+                null,
                 job.config()
         ));
         log.info("Starting execution for document job {}", jobId);
@@ -157,8 +164,7 @@ public class JobService {
         long start = System.currentTimeMillis();
         try {
             var images = documentProcessingService.convertPdfToImages(pdfFile);
-            
-            // Save images to disk
+
             Path jobDir = Path.of("reports", "images", jobId);
             Files.createDirectories(jobDir);
             for (int i = 0; i < images.size(); i++) {
@@ -167,12 +173,13 @@ public class JobService {
             }
             log.info("Saved {} images to {}", images.size(), jobDir);
 
-            // Synthesize content from images
             ResearchDocumentRequest config = job.config();
+            LlmUsage usage = new LlmUsage();
             var synthesisReport = synthesisService.synthesizeDocument(
-                    images, 
-                    config.resolvedPagePrompt(), 
-                    config.resolvedCompileReportPrompt());
+                    images,
+                    config.resolvedPagePrompt(),
+                    config.resolvedCompileReportPrompt(),
+                    usage);
 
             long duration = System.currentTimeMillis() - start;
 
@@ -200,6 +207,7 @@ public class JobService {
                     job.createdAt(),
                     Instant.now(),
                     finalReport,
+                    usage,
                     job.config()
             ));
             log.info("Document job {} completed successfully", jobId);
@@ -214,6 +222,7 @@ public class JobService {
                     null,
                     job.createdAt(),
                     Instant.now(),
+                    null,
                     null,
                     job.config()
             ));
