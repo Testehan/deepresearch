@@ -12,6 +12,7 @@ public record ResearchJob<T>(
         Instant createdAt,
         Instant completedAt,
         ReportResult result,
+        LlmUsage llmUsage,
         T config
 ) {
     public enum JobStatus {

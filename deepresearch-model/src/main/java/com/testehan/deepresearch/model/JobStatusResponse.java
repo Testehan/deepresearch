@@ -4,9 +4,14 @@ public record JobStatusResponse(
         String status,
         ReportResult result,
         String filePath,
-        String errorMessage
+        String errorMessage,
+        LlmUsage llmUsage
 ) {
     public JobStatusResponse(String status, ReportResult result, String filePath) {
-        this(status, result, filePath, null);
+        this(status, result, filePath, null, null);
+    }
+
+    public JobStatusResponse(String status, ReportResult result, String filePath, String errorMessage) {
+        this(status, result, filePath, errorMessage, null);
     }
 }
