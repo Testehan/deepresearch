@@ -1,6 +1,7 @@
 package com.testehan.deepresearch.service;
 
 import com.testehan.deepresearch.model.*;
+import com.testehan.deepresearch.pipeline.BatchGeminiService;
 import com.testehan.deepresearch.pipeline.DiscoveryService;
 import com.testehan.deepresearch.pipeline.RetrievalService;
 import com.testehan.deepresearch.pipeline.SynthesisService;
@@ -30,6 +31,9 @@ class ResearchPipelineTest {
     @Mock
     private SynthesisService synthesisService;
 
+    @Mock
+    private BatchGeminiService batchGeminiService;
+
     private ResearchPipeline pipeline;
 
     @TempDir
@@ -37,52 +41,57 @@ class ResearchPipelineTest {
 
     @BeforeEach
     void setUp() {
-        pipeline = new ResearchPipeline(discoveryService, retrievalService, synthesisService);
+        pipeline = new ResearchPipeline(discoveryService, retrievalService, synthesisService, batchGeminiService);
     }
 
     @Test
     void execute_shouldCallAllServicesInOrder() {
-        var request = new ResearchRequest(ResearchTopic.NEWS, "test topic", 5, 2, "prompt", "prompt", "prompt");
-        
+        var request = new ResearchRequest(ResearchTopic.NEWS, "test topic", null, 5, 2, "prompt", "prompt", "prompt");
+        var usage = new LlmUsage();
+
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(new SearchCandidate("http://a.com", "A", "q")), 1);
-        when(discoveryService.discover(eq("test topic"), eq(5), anyString())).thenReturn(discoveryResult);
-        
+        when(discoveryService.discover(eq("test topic"), eq(5), anyString(), any(LlmUsage.class), anyString()))
+                .thenReturn(discoveryResult);
+
         var sources = List.of(new FetchedSource("http://a.com", "A", "content", 200));
         when(retrievalService.retrieve(any())).thenReturn(sources);
-        
-        var report = new SynthesisService.Report("summary", List.of("finding"), List.of("theme"), List.of("q"));
-        when(synthesisService.synthesize(eq("test topic"), eq(sources), eq(2), anyString(), anyString()))
-                .thenReturn(report);
 
-        var result = pipeline.execute(request);
+        var report = new SynthesisService.Report("summary", List.of("finding"), List.of("theme"), List.of("q"));
+        when(synthesisService.synthesize(eq("test topic"), eq(sources), eq(2), anyString(), anyString(),
+                any(LlmUsage.class), anyString())).thenReturn(report);
+
+        var result = pipeline.execute(request, usage);
 
         assertNotNull(result);
         assertEquals(ResearchTopic.NEWS, result.topic());
-        verify(discoveryService).discover(eq("test topic"), eq(5), anyString());
+        verify(discoveryService).discover(eq("test topic"), eq(5), anyString(), any(LlmUsage.class), anyString());
         verify(retrievalService).retrieve(any());
-        verify(synthesisService).synthesize(eq("test topic"), any(), eq(2), anyString(), anyString());
+        verify(synthesisService).synthesize(eq("test topic"), any(), eq(2), anyString(), anyString(),
+                any(LlmUsage.class), anyString());
     }
 
     @Test
     void execute_shouldCreateReportWithCorrectDiagnostics() {
-        var request = new ResearchRequest(ResearchTopic.NEWS, "topic", 3, 2, "p", "p", "p");
-        
+        var request = new ResearchRequest(ResearchTopic.NEWS, "topic", null, 3, 2, "p", "p", "p");
+        var usage = new LlmUsage();
+
         var discoveryResult = new DiscoveryService.DiscoveryResult(
                 List.of(
                         new SearchCandidate("http://1.com", "1", "q"),
                         new SearchCandidate("http://2.com", "2", "q")
                 ), 1);
-        when(discoveryService.discover(anyString(), anyInt(), anyString())).thenReturn(discoveryResult);
-        
+        when(discoveryService.discover(anyString(), anyInt(), anyString(), any(LlmUsage.class), anyString()))
+                .thenReturn(discoveryResult);
+
         var sources = List.of(new FetchedSource("http://1.com", "1", "content", 200));
         when(retrievalService.retrieve(any())).thenReturn(sources);
-        
-        var report = new SynthesisService.Report("summary", List.of("f"), List.of(), List.of());
-        when(synthesisService.synthesize(anyString(), any(), anyInt(), anyString(), anyString()))
-                .thenReturn(report);
 
-        var result = pipeline.execute(request);
+        var report = new SynthesisService.Report("summary", List.of("f"), List.of(), List.of());
+        when(synthesisService.synthesize(anyString(), any(), anyInt(), anyString(), anyString(),
+                any(LlmUsage.class), anyString())).thenReturn(report);
+
+        var result = pipeline.execute(request, usage);
 
         var diag = result.diagnostics();
         assertEquals(1, diag.queriesGenerated());
@@ -93,22 +102,24 @@ class ResearchPipelineTest {
 
     @Test
     void execute_shouldMapSourcesToReferences() {
-        var request = new ResearchRequest(ResearchTopic.NEWS, "topic", 1, 1, "p", "p", "p");
-        
+        var request = new ResearchRequest(ResearchTopic.NEWS, "topic", null, 1, 1, "p", "p", "p");
+        var usage = new LlmUsage();
+
         var discoveryResult = new DiscoveryService.DiscoveryResult(List.of(), 1);
-        when(discoveryService.discover(anyString(), anyInt(), anyString())).thenReturn(discoveryResult);
-        
+        when(discoveryService.discover(anyString(), anyInt(), anyString(), any(LlmUsage.class), anyString()))
+                .thenReturn(discoveryResult);
+
         var sources = List.of(
                 new FetchedSource("http://a.com", "Title A", "content", 200),
                 new FetchedSource("http://b.com", "Title B", "content", 200)
         );
         when(retrievalService.retrieve(any())).thenReturn(sources);
-        
-        var report = new SynthesisService.Report("s", List.of(), List.of(), List.of());
-        when(synthesisService.synthesize(anyString(), any(), anyInt(), anyString(), anyString()))
-                .thenReturn(report);
 
-        var result = pipeline.execute(request);
+        var report = new SynthesisService.Report("s", List.of(), List.of(), List.of());
+        when(synthesisService.synthesize(anyString(), any(), anyInt(), anyString(), anyString(),
+                any(LlmUsage.class), anyString())).thenReturn(report);
+
+        var result = pipeline.execute(request, usage);
 
         assertEquals(2, result.sources().size());
         assertTrue(result.sources().stream().anyMatch(s -> s.url().equals("http://a.com")));
