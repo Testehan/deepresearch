@@ -64,55 +64,77 @@ public class LlmCostService {
         LlmUsage usage = new LlmUsage();
         if (response == null) return usage;
 
-        int promptTokens     = extractPromptTokens(response);
-        int completionTokens = extractCompletionTokens(response);
-        int cachedTokens     = extractCachedTokens(response);
+        UsageTotals totals = extractUsageTotals(response);
 
-        usage.setPromptTokens(promptTokens);
-        usage.setCompletionTokens(completionTokens);
-        usage.setCachedTokens(cachedTokens);
-        usage.setTotalCostUsd(calculateCost(promptTokens, completionTokens, cachedTokens, modelId));
+        usage.setPromptTokens(totals.promptTokens());
+        usage.setCompletionTokens(totals.completionTokens());
+        usage.setCachedTokens(totals.cachedTokens());
+        usage.setThoughtsTokens(totals.thoughtsTokens());
+        usage.setToolUsePromptTokens(totals.toolUsePromptTokens());
+        usage.setTotalTokens(totals.totalTokens());
+        usage.setTotalCostUsd(calculateCost(totals, modelId));
         return usage;
     }
 
     public void logAndAccumulate(ChatResponse response, String operationType, LlmUsage accumulator, String modelId) {
         LlmUsage delta = extractUsage(response, modelId);
         accumulator.add(delta);
-        log.info("LLM usage [{}]: prompt={} completion={} cached={} cost=${}",
+        log.info("LLM usage [{}]: prompt={} completion={} thoughts={} toolUsePrompt={} cached={} cost=${}",
                 operationType,
                 delta.getPromptTokens(),
                 delta.getCompletionTokens(),
+                delta.getThoughtsTokens(),
+                delta.getToolUsePromptTokens(),
                 delta.getCachedTokens(),
                 delta.getTotalCostUsd());
     }
 
     public void logAndAccumulateBatch(List<BatchGeminiService.BatchResult> results, String modelId, LlmUsage accumulator) {
-        int totalPrompt = 0, totalCompletion = 0, totalCached = 0;
+        int totalPrompt = 0, totalCompletion = 0, totalCached = 0, totalThoughts = 0, totalToolUsePrompt = 0, totalTokens = 0;
         BigDecimal totalCost = BigDecimal.ZERO;
 
         for (BatchGeminiService.BatchResult r : results) {
             totalPrompt     += r.promptTokens();
             totalCompletion += r.completionTokens();
             totalCached     += r.cachedTokens();
-            totalCost        = totalCost.add(calculateCost(r.promptTokens(), r.completionTokens(), r.cachedTokens(), modelId));
+            totalThoughts   += r.thoughtsTokens();
+            totalToolUsePrompt += r.toolUsePromptTokens();
+            totalTokens      += r.totalTokens();
+            totalCost        = totalCost.add(calculateCost(
+                    r.promptTokens(), r.completionTokens(), r.cachedTokens(),
+                    r.thoughtsTokens(), r.toolUsePromptTokens(), modelId));
         }
 
         LlmUsage delta = new LlmUsage();
         delta.setPromptTokens(totalPrompt);
         delta.setCompletionTokens(totalCompletion);
         delta.setCachedTokens(totalCached);
+        delta.setThoughtsTokens(totalThoughts);
+        delta.setToolUsePromptTokens(totalToolUsePrompt);
+        delta.setTotalTokens(totalTokens);
         delta.setTotalCostUsd(totalCost.setScale(6, RoundingMode.HALF_UP));
         accumulator.add(delta);
 
-        log.info("LLM usage [batch_chunks x{}]: prompt={} completion={} cached={} cost=${}",
-                results.size(), totalPrompt, totalCompletion, totalCached, totalCost);
+        log.info("LLM usage [batch_chunks x{}]: prompt={} completion={} thoughts={} toolUsePrompt={} cached={} cost=${}",
+                results.size(), totalPrompt, totalCompletion, totalThoughts, totalToolUsePrompt, totalCached, totalCost);
     }
 
     public BigDecimal calculateCost(int promptTokens, int completionTokens, int cachedTokens, String modelId) {
+        return calculateCost(promptTokens, completionTokens, cachedTokens, 0, 0, modelId);
+    }
+
+    public BigDecimal calculateCost(int promptTokens, int completionTokens, int cachedTokens,
+                                    int thoughtsTokens, int toolUsePromptTokens, String modelId) {
         ModelPricing p = pricingFor(modelId);
-        return calculatePromptCost(promptTokens, cachedTokens, p)
-                .add(calculateOutputCost(completionTokens, p))
+        return calculatePromptCost(promptTokens + toolUsePromptTokens, cachedTokens, p)
+                .add(calculateOutputCost(completionTokens + thoughtsTokens, p))
                 .setScale(6, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calculateCost(UsageTotals totals, String modelId) {
+        return calculateCost(
+                totals.promptTokens(), totals.completionTokens(), totals.cachedTokens(),
+                totals.thoughtsTokens(), totals.toolUsePromptTokens(), modelId);
     }
 
     private BigDecimal calculatePromptCost(int promptTokens, int cachedTokens, ModelPricing p) {
@@ -135,23 +157,42 @@ public class LlmCostService {
                 .divide(BigDecimal.valueOf(MILLION), 10, RoundingMode.HALF_UP);
     }
 
-    private int extractPromptTokens(ChatResponse response) {
-        if (response.getMetadata() == null) return 0;
+    private UsageTotals extractUsageTotals(ChatResponse response) {
+        if (response.getMetadata() == null) return UsageTotals.ZERO;
         var usage = response.getMetadata().getUsage();
-        return usage == null ? 0 : usage.getPromptTokens();
+        if (usage == null) return UsageTotals.ZERO;
+
+        int prompt = safeInteger(usage.getPromptTokens());
+        int completion = safeInteger(usage.getCompletionTokens());
+        int total = safeInteger(usage.getTotalTokens());
+        int cached = 0;
+        int thoughts = 0;
+        int toolUsePrompt = 0;
+
+        if (usage instanceof GoogleGenAiUsage googleUsage) {
+            cached = safeInteger(googleUsage.getCachedContentTokenCount());
+            thoughts = safeInteger(googleUsage.getThoughtsTokenCount());
+            toolUsePrompt = safeInteger(googleUsage.getToolUsePromptTokenCount());
+        }
+        if (total == 0) {
+            total = prompt + completion + thoughts + toolUsePrompt;
+        }
+
+        return new UsageTotals(prompt, completion, cached, thoughts, toolUsePrompt, total);
     }
 
-    private int extractCompletionTokens(ChatResponse response) {
-        if (response.getMetadata() == null) return 0;
-        var usage = response.getMetadata().getUsage();
-        return usage == null ? 0 : usage.getCompletionTokens();
+    private int safeInteger(Integer value) {
+        return value != null ? value : 0;
     }
 
-    private int extractCachedTokens(ChatResponse response) {
-        if (response.getMetadata() == null) return 0;
-        var usage = response.getMetadata().getUsage();
-        if (!(usage instanceof GoogleGenAiUsage googleUsage)) return 0;
-        Integer cached = googleUsage.getCachedContentTokenCount();
-        return cached != null ? cached : 0;
+    private record UsageTotals(
+            int promptTokens,
+            int completionTokens,
+            int cachedTokens,
+            int thoughtsTokens,
+            int toolUsePromptTokens,
+            int totalTokens
+    ) {
+        private static final UsageTotals ZERO = new UsageTotals(0, 0, 0, 0, 0, 0);
     }
 }

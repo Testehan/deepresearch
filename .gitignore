@@ -34,4 +34,6 @@ build/
 
 ### Generated Reports ###
 reports/
-secrets.properties
+secrets-local.properties
+secrets-prod.properties
+/secrets-common.properties

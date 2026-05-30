@@ -28,7 +28,14 @@ public class BatchGeminiService {
     }
 
     /** Holds the text output and token counts for a single response inside a completed batch. */
-    public record BatchResult(String text, int promptTokens, int completionTokens, int cachedTokens) {}
+    public record BatchResult(
+            String text,
+            int promptTokens,
+            int completionTokens,
+            int cachedTokens,
+            int thoughtsTokens,
+            int toolUsePromptTokens,
+            int totalTokens) {}
 
     /**
      * Submits prompts as a Gemini Batch API job.
@@ -122,6 +129,9 @@ public class BatchGeminiService {
         int prompt     = 0;
         int completion = 0;
         int cached     = 0;
+        int thoughts   = 0;
+        int toolUsePrompt = 0;
+        int total      = 0;
 
         var usageMeta = r.response()
                 .flatMap(resp -> resp.usageMetadata());
@@ -130,9 +140,15 @@ public class BatchGeminiService {
             prompt     = u.promptTokenCount().orElse(0);
             completion = u.candidatesTokenCount().orElse(0);
             cached     = u.cachedContentTokenCount().orElse(0);
+            thoughts   = u.thoughtsTokenCount().orElse(0);
+            toolUsePrompt = u.toolUsePromptTokenCount().orElse(0);
+            total      = u.totalTokenCount().orElse(0);
+        }
+        if (total == 0) {
+            total = prompt + completion + thoughts + toolUsePrompt;
         }
 
-        return new BatchResult(text, prompt, completion, cached);
+        return new BatchResult(text, prompt, completion, cached, thoughts, toolUsePrompt, total);
     }
 
     private static String stripBatchPrefix(String modelId) {

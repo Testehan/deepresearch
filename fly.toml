@@ -1,0 +1,21 @@
+app = 'deepresearch-backend'
+primary_region = 'ams'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[deploy]
+  strategy = 'immediate'
+
+[http_service]
+  internal_port = 8081
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 0
+
+[[vm]]
+  size = 'performance-1x'
+  memory = '2gb'
+  cpus = 1
+  memory_mb = 2048

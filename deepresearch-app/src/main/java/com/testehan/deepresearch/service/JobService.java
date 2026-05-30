@@ -181,14 +181,6 @@ public class JobService {
         try {
             var images = documentProcessingService.convertPdfToImages(pdfFile);
 
-            Path jobDir = Path.of("reports", "images", jobId);
-            Files.createDirectories(jobDir);
-            for (int i = 0; i < images.size(); i++) {
-                Path imagePath = jobDir.resolve("page-%d.png".formatted(i + 1));
-                Files.write(imagePath, images.get(i));
-            }
-            log.info("Saved {} images to {}", images.size(), jobDir);
-
             ResearchDocumentRequest config = job.config();
             LlmUsage usage = new LlmUsage();
             var synthesisReport = synthesisService.synthesizeDocument(
@@ -215,10 +207,10 @@ public class JobService {
 
             jobs.put(jobId, new ResearchJob<>(
                     jobId, job.topic(), ResearchJob.JobStatus.COMPLETED,
-                    null, jobDir.toString(), job.createdAt(), Instant.now(),
+                    null, null, job.createdAt(), Instant.now(),
                     finalReport, usage, job.config(), null, null
             ));
-            log.info("Document job {} completed successfully", jobId);
+            log.info("Document job {} completed successfully in {} ms", jobId, duration);
 
         } catch (Exception e) {
             log.error("Document job {} failed: {}", jobId, e.getMessage(), e);

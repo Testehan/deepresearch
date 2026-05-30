@@ -9,12 +9,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class JobServiceTest {
@@ -109,5 +111,32 @@ class JobServiceTest {
         assertNotNull(completedJob.result());
         assertTrue(completedJob.result() instanceof NewsReport);
         assertEquals("Executive summary", ((NewsReport)completedJob.result()).executiveSummary());
+    }
+
+    @Test
+    void executeDocumentJob_shouldCompleteWithoutPersistingImagePath() throws Exception {
+        var request = new ResearchDocumentRequest(ResearchTopic.EARNINGS_PRESENTATION, null, null);
+        var job = jobService.createDocumentJob("presentation.pdf", request);
+        var pdf = new MockMultipartFile("pdf", "presentation.pdf", "application/pdf", new byte[]{1, 2, 3});
+        var images = List.of(new byte[]{4, 5, 6});
+        var mockReport = new EarningsPresentationReport(
+                null, null, null, List.of(), null, null, null, null, null, List.of("Highlight")
+        );
+
+        when(documentProcessingService.convertPdfToImages(pdf)).thenReturn(images);
+        when(synthesisService.synthesizeDocument(any(), any(), any(), any(LlmUsage.class))).thenReturn(mockReport);
+
+        jobService.executeDocumentJob(job.jobId(), pdf);
+
+        var completedJob = jobService.getJob(job.jobId());
+        assertEquals(ResearchJob.JobStatus.COMPLETED, completedJob.status());
+        assertNull(completedJob.filePath());
+        assertEquals(mockReport, completedJob.result());
+        verify(synthesisService).synthesizeDocument(
+                images,
+                ResearchDocumentRequest.DEFAULT_PAGE_PROMPT,
+                ResearchDocumentRequest.DEFAULT_COMPILE_REPORT_PROMPT,
+                completedJob.llmUsage()
+        );
     }
 }
