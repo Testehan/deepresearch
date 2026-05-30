@@ -3,6 +3,7 @@ package com.testehan.deepresearch.model;
 public record ResearchRequest(
     ResearchTopic topic,
     String subject,
+    String modelId,
     Integer maxSources,
     Integer chunkSize,
     String discoveryPrompt,
@@ -21,6 +22,8 @@ public record ResearchRequest(
             - Current year trends
             - Benchmarks or comparisons
             - Case studies or real-world examples
+
+            Keep each query concise — no longer than 150 characters.
 
             Return only a JSON array of strings, nothing else.
             """;
@@ -49,6 +52,14 @@ public record ResearchRequest(
             Extracted findings:
             %s
             """;
+
+    public String resolvedModelId() {
+        return (modelId != null && !modelId.isBlank()) ? modelId : "ollama";
+    }
+
+    public boolean isBatchModel() {
+        return resolvedModelId().startsWith("batch-");
+    }
 
     public int resolvedMaxSources() {
         return (maxSources != null && maxSources > 0) ? maxSources : DEFAULT_MAX_SOURCES;

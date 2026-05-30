@@ -13,11 +13,14 @@ public record ResearchJob<T>(
         Instant completedAt,
         ReportResult result,
         LlmUsage llmUsage,
-        T config
+        T config,
+        String batchJobId,
+        List<SourceReference> pendingSources
 ) {
     public enum JobStatus {
         PENDING("pending"),
         RUNNING("running"),
+        BATCH_POLLING("batch_polling"),
         COMPLETED("completed"),
         FAILED("failed");
 
