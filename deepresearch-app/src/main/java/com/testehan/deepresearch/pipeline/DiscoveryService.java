@@ -1,5 +1,6 @@
 package com.testehan.deepresearch.pipeline;
 
+import com.testehan.deepresearch.config.ChatClientProvider;
 import com.testehan.deepresearch.model.LlmUsage;
 import com.testehan.deepresearch.model.SearchCandidate;
 import com.testehan.deepresearch.service.LlmCostService;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
@@ -23,21 +25,23 @@ public class DiscoveryService {
     private static final Logger log = LoggerFactory.getLogger(DiscoveryService.class);
 
     private final Browserbase browserbase;
-    private final ChatClient chatClient;
+    private final ChatClientProvider chatClientProvider;
     private final LlmCostService llmCostService;
     private final int defaultMaxSources;
 
-    DiscoveryService(Browserbase browserbase, ChatClient chatClient, LlmCostService llmCostService,
+    DiscoveryService(Browserbase browserbase, ChatClientProvider chatClientProvider,
+                     LlmCostService llmCostService,
                      @Value("${research.max-sources:15}") int defaultMaxSources) {
         this.browserbase = browserbase;
-        this.chatClient = chatClient;
+        this.chatClientProvider = chatClientProvider;
         this.llmCostService = llmCostService;
         this.defaultMaxSources = defaultMaxSources;
     }
 
     public record DiscoveryResult(List<SearchCandidate> candidates, int queriesGenerated) {}
 
-    public DiscoveryResult discover(String topic, int maxSources, String discoveryPrompt, LlmUsage usage) {
+    public DiscoveryResult discover(String topic, int maxSources, String discoveryPrompt,
+                                    LlmUsage usage, String modelId) {
         log.info("--- Step 1: Search + Discover ---");
 
         int effectiveMaxSources = maxSources > 0 ? maxSources : defaultMaxSources;
@@ -46,8 +50,13 @@ public class DiscoveryService {
         var converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<String>>() {});
         String prompt = discoveryPrompt.formatted(numQueries, topic) + "\n\n" + converter.getFormat();
 
-        var chatResponse = chatClient.prompt(prompt).call().chatResponse();
-        llmCostService.logAndAccumulate(chatResponse, "discovery", usage);
+        ChatClient client = chatClientProvider.chatClientFor(modelId);
+        GoogleGenAiChatOptions options = chatClientProvider.optionsFor(modelId);
+        var requestSpec = client.prompt(prompt);
+        if (options != null) requestSpec = requestSpec.options(options);
+
+        var chatResponse = requestSpec.call().chatResponse();
+        llmCostService.logAndAccumulate(chatResponse, "discovery", usage, modelId);
         List<String> queries = converter.convert(chatResponse.getResult().getOutput().getText());
 
         int rawHits = 0;
@@ -56,6 +65,10 @@ public class DiscoveryService {
 
         for (int i = 0; i < queries.size(); i++) {
             String query = queries.get(i);
+            if (query.length() > 150) {
+                log.warn("Query exceeds 150 chars ({}), truncating: {}", query.length(), query);
+                query = query.substring(0, 150);
+            }
             var results = browserbase.search().web(query, effectiveMaxSources).results();
             log.info("  Query {}/{}: {} — {} results", i + 1, queries.size(), query, results.size());
             rawHits += results.size();
