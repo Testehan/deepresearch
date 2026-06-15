@@ -56,6 +56,18 @@ public class JobService {
         return job;
     }
 
+    public ResearchJob<BatchPromptsRequest> createBatchPromptsJob(BatchPromptsRequest request) {
+        String jobId = UUID.randomUUID().toString();
+        var job = new ResearchJob<>(
+                jobId, ResearchTopic.BATCH_PROMPTS, ResearchJob.JobStatus.PENDING,
+                null, null, Instant.now(), null, null, null, request, null, null
+        );
+        jobs.put(jobId, job);
+        log.info("Created batch-prompts job {} with {} prompts (model: {}, callerJobId: {})",
+                jobId, request.prompts().size(), request.modelId(), request.callerJobId());
+        return job;
+    }
+
     public ResearchJob<ResearchDocumentRequest> createDocumentJob(String filename, ResearchDocumentRequest request) {
         String jobId = UUID.randomUUID().toString();
         var job = new ResearchJob<>(
@@ -115,6 +127,41 @@ public class JobService {
         }
     }
 
+    @Async
+    @SuppressWarnings("unchecked")
+    public void executeBatchPromptsJob(String jobId) {
+        var job = (ResearchJob<BatchPromptsRequest>) jobs.get(jobId);
+        if (job == null) {
+            log.error("Batch-prompts job {} not found", jobId);
+            return;
+        }
+
+        jobs.put(jobId, withStatus(job, ResearchJob.JobStatus.RUNNING));
+        log.info("Starting execution for batch-prompts job {}", jobId);
+
+        try {
+            BatchPromptsRequest request = job.config();
+            List<String> promptTexts = request.prompts().stream().map(BatchPromptItem::prompt).toList();
+            String geminiBatchJobId = batchGeminiService.submitBatch(request.modelId(), promptTexts);
+
+            jobs.put(jobId, new ResearchJob<>(
+                    jobId, job.topic(), ResearchJob.JobStatus.BATCH_POLLING,
+                    null, null, job.createdAt(), null, null, new LlmUsage(), request,
+                    geminiBatchJobId, null
+            ));
+            log.info("Batch-prompts job {} submitted to Gemini batch, polling started (batchJobId={})",
+                    jobId, geminiBatchJobId);
+
+        } catch (Exception e) {
+            log.error("Batch-prompts job {} failed: {}", jobId, e.getMessage(), e);
+            jobs.put(jobId, new ResearchJob<>(
+                    jobId, job.topic(), ResearchJob.JobStatus.FAILED,
+                    e.getMessage(), null, job.createdAt(), Instant.now(),
+                    null, null, job.config(), null, null
+            ));
+        }
+    }
+
     @Scheduled(fixedDelay = 30_000)
     @SuppressWarnings("unchecked")
     public void checkBatchJobs() {
@@ -123,45 +170,108 @@ public class JobService {
                 .toList();
 
         for (var rawJob : batchJobs) {
-            var job = (ResearchJob<ResearchRequest>) rawJob;
-            String batchJobId = job.batchJobId();
-            log.debug("Polling Gemini batch job {} for research job {}", batchJobId, job.jobId());
-
-            try {
-                if (!batchGeminiService.isComplete(batchJobId)) continue;
-
-                ResearchRequest request = job.config();
-                LlmUsage usage = job.llmUsage() != null ? job.llmUsage() : new LlmUsage();
-
-                if (batchGeminiService.isSucceeded(batchJobId)) {
-                    List<BatchGeminiService.BatchResult> batchResults = batchGeminiService.retrieveResults(batchJobId);
-                    llmCostService.logAndAccumulateBatch(batchResults, request.resolvedModelId(), usage);
-
-                    List<String> chunkSummaries = batchResults.stream()
-                            .map(BatchGeminiService.BatchResult::text).toList();
-                    List<SourceReference> sourceRefs = job.pendingSources() != null
-                            ? job.pendingSources() : List.of();
-
-                    NewsReport report = pipeline.completeBatchResult(request, chunkSummaries, sourceRefs, usage);
-                    String filePath = findReportFile(request.subject());
-
-                    jobs.put(job.jobId(), new ResearchJob<>(
-                            job.jobId(), job.topic(), ResearchJob.JobStatus.COMPLETED,
-                            null, filePath, job.createdAt(), Instant.now(), report, usage, request, batchJobId, null
-                    ));
-                    log.info("Batch job {} completed for research job {}", batchJobId, job.jobId());
-                } else {
-                    jobs.put(job.jobId(), new ResearchJob<>(
-                            job.jobId(), job.topic(), ResearchJob.JobStatus.FAILED,
-                            "Gemini batch job " + batchJobId + " did not succeed",
-                            null, job.createdAt(), Instant.now(), null, null, request, batchJobId, null
-                    ));
-                    log.warn("Batch job {} failed for research job {}", batchJobId, job.jobId());
-                }
-            } catch (Exception e) {
-                log.error("Error polling batch job {} for research job {}: {}",
-                        batchJobId, job.jobId(), e.getMessage(), e);
+            if (rawJob.config() instanceof BatchPromptsRequest) {
+                pollBatchPromptsJob((ResearchJob<BatchPromptsRequest>) (ResearchJob<?>) rawJob);
+            } else {
+                pollNewsBatchJob((ResearchJob<ResearchRequest>) (ResearchJob<?>) rawJob);
             }
+        }
+    }
+
+    private void pollNewsBatchJob(ResearchJob<ResearchRequest> job) {
+        String batchJobId = job.batchJobId();
+        log.debug("Polling Gemini batch job {} for research job {}", batchJobId, job.jobId());
+
+        try {
+            if (!batchGeminiService.isComplete(batchJobId)) return;
+
+            ResearchRequest request = job.config();
+            LlmUsage usage = job.llmUsage() != null ? job.llmUsage() : new LlmUsage();
+
+            if (batchGeminiService.isSucceeded(batchJobId)) {
+                List<BatchGeminiService.BatchResult> batchResults = batchGeminiService.retrieveResults(batchJobId);
+                llmCostService.logAndAccumulateBatch(batchResults, request.resolvedModelId(), usage);
+
+                List<String> chunkSummaries = batchResults.stream()
+                        .map(BatchGeminiService.BatchResult::text).toList();
+                List<SourceReference> sourceRefs = job.pendingSources() != null
+                        ? job.pendingSources() : List.of();
+
+                NewsReport report = pipeline.completeBatchResult(request, chunkSummaries, sourceRefs, usage);
+                String filePath = findReportFile(request.subject());
+
+                jobs.put(job.jobId(), new ResearchJob<>(
+                        job.jobId(), job.topic(), ResearchJob.JobStatus.COMPLETED,
+                        null, filePath, job.createdAt(), Instant.now(), report, usage, request, batchJobId, null
+                ));
+                log.info("Batch job {} completed for research job {}", batchJobId, job.jobId());
+            } else {
+                jobs.put(job.jobId(), new ResearchJob<>(
+                        job.jobId(), job.topic(), ResearchJob.JobStatus.FAILED,
+                        "Gemini batch job " + batchJobId + " did not succeed",
+                        null, job.createdAt(), Instant.now(), null, null, request, batchJobId, null
+                ));
+                log.warn("Batch job {} failed for research job {}", batchJobId, job.jobId());
+            }
+        } catch (Exception e) {
+            log.error("Error polling batch job {} for research job {}: {}",
+                    batchJobId, job.jobId(), e.getMessage(), e);
+        }
+    }
+
+    private void pollBatchPromptsJob(ResearchJob<BatchPromptsRequest> job) {
+        String batchJobId = job.batchJobId();
+        log.debug("Polling Gemini batch job {} for batch-prompts job {}", batchJobId, job.jobId());
+
+        try {
+            if (!batchGeminiService.isComplete(batchJobId)) return;
+
+            BatchPromptsRequest request = job.config();
+            LlmUsage usage = job.llmUsage() != null ? job.llmUsage() : new LlmUsage();
+
+            if (batchGeminiService.isSucceeded(batchJobId)) {
+                List<BatchGeminiService.BatchResult> batchResults = batchGeminiService.retrieveResults(batchJobId);
+                llmCostService.logAndAccumulateBatch(batchResults, request.modelId(), usage);
+
+                List<BatchPromptItem> items = request.prompts();
+                if (batchResults.size() != items.size()) {
+                    throw new IllegalStateException("Batch result count " + batchResults.size()
+                            + " does not match prompt count " + items.size()
+                            + " for job " + job.jobId());
+                }
+
+                List<BatchPromptResult> mapped = new java.util.ArrayList<>(batchResults.size());
+                for (int i = 0; i < batchResults.size(); i++) {
+                    BatchGeminiService.BatchResult r = batchResults.get(i);
+                    mapped.add(new BatchPromptResult(
+                            items.get(i).sectionId(),
+                            r.text(),
+                            r.promptTokens(),
+                            r.completionTokens(),
+                            r.cachedTokens(),
+                            r.thoughtsTokens(),
+                            r.toolUsePromptTokens(),
+                            r.totalTokens()
+                    ));
+                }
+                BatchPromptsResult result = new BatchPromptsResult(mapped);
+
+                jobs.put(job.jobId(), new ResearchJob<>(
+                        job.jobId(), job.topic(), ResearchJob.JobStatus.COMPLETED,
+                        null, null, job.createdAt(), Instant.now(), result, usage, request, batchJobId, null
+                ));
+                log.info("Batch-prompts job {} completed ({} results)", job.jobId(), mapped.size());
+            } else {
+                jobs.put(job.jobId(), new ResearchJob<>(
+                        job.jobId(), job.topic(), ResearchJob.JobStatus.FAILED,
+                        "Gemini batch job " + batchJobId + " did not succeed",
+                        null, job.createdAt(), Instant.now(), null, null, request, batchJobId, null
+                ));
+                log.warn("Batch-prompts job {} failed (Gemini batch {})", job.jobId(), batchJobId);
+            }
+        } catch (Exception e) {
+            log.error("Error polling Gemini batch {} for batch-prompts job {}: {}",
+                    batchJobId, job.jobId(), e.getMessage(), e);
         }
     }
 

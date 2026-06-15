@@ -10,7 +10,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 )
 @JsonSubTypes({
         @JsonSubTypes.Type(value = NewsReport.class, name = "news"),
-        @JsonSubTypes.Type(value = EarningsPresentationReport.class, name = "earnings_presentation")
+        @JsonSubTypes.Type(value = EarningsPresentationReport.class, name = "earnings_presentation"),
+        @JsonSubTypes.Type(value = BatchPromptsResult.class, name = "batch_prompts")
 })
 public interface ReportResult {
 }
