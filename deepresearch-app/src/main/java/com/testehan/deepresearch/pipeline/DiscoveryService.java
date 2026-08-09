@@ -38,7 +38,7 @@ public class DiscoveryService {
         this.defaultMaxSources = defaultMaxSources;
     }
 
-    public record DiscoveryResult(List<SearchCandidate> candidates, int queriesGenerated) {}
+    public record DiscoveryResult(List<String> queries, List<SearchCandidate> candidates, int queriesGenerated) {}
 
     public DiscoveryResult discover(String topic, int maxSources, String discoveryPrompt,
                                     LlmUsage usage, String modelId) {
@@ -81,10 +81,14 @@ public class DiscoveryService {
             }
         }
 
+        if (candidates.size() > effectiveMaxSources) {
+            candidates = candidates.subList(0, effectiveMaxSources);
+        }
+
         log.info("Discovery summary: {} raw hits -> {} unique URLs -> {} fetch candidates",
                 rawHits, seenUrls.size(), candidates.size());
 
-        return new DiscoveryResult(candidates, queries.size());
+        return new DiscoveryResult(queries, candidates, queries.size());
     }
 
     static int queryCountFor(int effectiveMaxSources) {

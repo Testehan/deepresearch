@@ -16,7 +16,7 @@ class DiscoveryResultTest {
                 new SearchCandidate("http://b.com", "Title B", "query1")
         );
         
-        var result = new DiscoveryService.DiscoveryResult(candidates, 2);
+        var result = new DiscoveryService.DiscoveryResult(List.of("query1", "query2"), candidates, 2);
         
         assertEquals(2, result.candidates().size());
         assertEquals(2, result.queriesGenerated());
@@ -24,7 +24,7 @@ class DiscoveryResultTest {
 
     @Test
     void shouldReturnEmptyCandidates() {
-        var result = new DiscoveryService.DiscoveryResult(List.of(), 0);
+        var result = new DiscoveryService.DiscoveryResult(List.of(), List.of(), 0);
         
         assertTrue(result.candidates().isEmpty());
         assertEquals(0, result.queriesGenerated());

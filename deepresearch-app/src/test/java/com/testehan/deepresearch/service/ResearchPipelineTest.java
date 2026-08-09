@@ -50,7 +50,7 @@ class ResearchPipelineTest {
         var usage = new LlmUsage();
 
         var discoveryResult = new DiscoveryService.DiscoveryResult(
-                List.of(new SearchCandidate("http://a.com", "A", "q")), 1);
+                List.of("q"), List.of(new SearchCandidate("http://a.com", "A", "q")), 1);
         when(discoveryService.discover(eq("test topic"), eq(5), anyString(), any(LlmUsage.class), anyString()))
                 .thenReturn(discoveryResult);
 
@@ -77,6 +77,7 @@ class ResearchPipelineTest {
         var usage = new LlmUsage();
 
         var discoveryResult = new DiscoveryService.DiscoveryResult(
+                List.of("q"),
                 List.of(
                         new SearchCandidate("http://1.com", "1", "q"),
                         new SearchCandidate("http://2.com", "2", "q")
@@ -105,7 +106,7 @@ class ResearchPipelineTest {
         var request = new ResearchRequest(ResearchTopic.NEWS, "topic", null, 1, 1, "p", "p", "p");
         var usage = new LlmUsage();
 
-        var discoveryResult = new DiscoveryService.DiscoveryResult(List.of(), 1);
+        var discoveryResult = new DiscoveryService.DiscoveryResult(List.of("q"), List.of(), 1);
         when(discoveryService.discover(anyString(), anyInt(), anyString(), any(LlmUsage.class), anyString()))
                 .thenReturn(discoveryResult);
 
