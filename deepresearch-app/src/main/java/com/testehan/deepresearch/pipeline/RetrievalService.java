@@ -2,6 +2,7 @@ package com.testehan.deepresearch.pipeline;
 
 import com.testehan.deepresearch.model.FetchedSource;
 import com.testehan.deepresearch.model.SearchCandidate;
+import dev.danvega.browserbase.model.exception.BrowserbaseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -53,10 +54,23 @@ public class RetrievalService {
                         index, total, candidate.url(), page.statusCode());
                 return null;
             }
+        } catch (BrowserbaseException e) {
+            log.info("  [{}/{}] FAIL {} — Browserbase {} status={} body={} title=\"{}\" query=\"{}\"",
+                    index, total, candidate.url(), e.getClass().getSimpleName(),
+                    e.getStatusCode(), sanitizeBody(e.getBody()), candidate.title(), candidate.query());
+            return null;
         } catch (Exception e) {
             log.info("  [{}/{}] FAIL {} — {}",
                     index, total, candidate.url(), e.getMessage());
             return null;
         }
+    }
+
+    private String sanitizeBody(String body) {
+        if (body == null || body.isBlank()) {
+            return "<empty>";
+        }
+        String compact = body.replaceAll("\\s+", " ").trim();
+        return compact.length() > 500 ? compact.substring(0, 500) + "... [truncated]" : compact;
     }
 }
