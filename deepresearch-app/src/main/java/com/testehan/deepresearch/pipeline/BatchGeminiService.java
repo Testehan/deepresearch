@@ -9,12 +9,14 @@ import com.google.genai.types.InlinedRequest;
 import com.google.genai.types.InlinedResponse;
 import com.google.genai.types.JobState;
 import com.google.genai.types.Part;
+import com.testehan.deepresearch.model.BatchPromptItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BatchGeminiService {
@@ -29,6 +31,7 @@ public class BatchGeminiService {
 
     /** Holds the text output and token counts for a single response inside a completed batch. */
     public record BatchResult(
+            String sectionId,
             String text,
             int promptTokens,
             int completionTokens,
@@ -49,15 +52,33 @@ public class BatchGeminiService {
         log.info("Submitting batch of {} prompts using model {}", prompts.size(), model);
 
         List<InlinedRequest> requests = prompts.stream()
-                .map(prompt -> InlinedRequest.builder()
-                        .model(model)
-                        .contents(List.of(Content.builder()
-                                .role("user")
-                                .parts(List.of(Part.fromText(prompt)))
-                                .build()))
-                        .build())
+                .map(prompt -> buildInlinedRequest(model, prompt, Map.of()))
                 .toList();
 
+        return submitRequests(model, requests);
+    }
+
+    /**
+     * Submits checklist prompts as a Gemini Batch API job, carrying each prompt's
+     * section id as request metadata so responses can be correlated without relying
+     * on provider return order.
+     *
+     * @param modelId the modelId from the request (e.g. "batch-gemini-2.5-pro")
+     * @param prompts checklist prompt items with stable section ids
+     * @return the Gemini batch job name (used for polling and retrieval)
+     */
+    public String submitBatchPrompts(String modelId, List<BatchPromptItem> prompts) {
+        String model = stripBatchPrefix(modelId);
+        log.info("Submitting batch of {} section prompts using model {}", prompts.size(), model);
+
+        List<InlinedRequest> requests = prompts.stream()
+                .map(item -> buildInlinedRequest(model, item.prompt(), Map.of("sectionId", item.sectionId())))
+                .toList();
+
+        return submitRequests(model, requests);
+    }
+
+    private String submitRequests(String model, List<InlinedRequest> requests) {
         BatchJobSource source = BatchJobSource.builder()
                 .inlinedRequests(requests)
                 .build();
@@ -69,6 +90,17 @@ public class BatchGeminiService {
             log.info("Batch job submitted: {}", jobName);
             return jobName;
         }
+    }
+
+    private InlinedRequest buildInlinedRequest(String model, String prompt, Map<String, String> metadata) {
+        return InlinedRequest.builder()
+                .model(model)
+                .metadata(metadata)
+                .contents(List.of(Content.builder()
+                        .role("user")
+                        .parts(List.of(Part.fromText(prompt)))
+                        .build()))
+                .build();
     }
 
     /**
@@ -109,12 +141,36 @@ public class BatchGeminiService {
                     .orElseThrow(() -> new IllegalStateException("No inlined responses in batch job " + batchJobName));
 
             return responses.stream()
-                    .map(this::toBatchResult)
+                    .map(response -> toBatchResult(response, false))
                     .toList();
         }
     }
 
-    private BatchResult toBatchResult(InlinedResponse r) {
+    /**
+     * Retrieves checklist batch-prompt results and requires each response to carry
+     * the section id metadata that was sent with the original request.
+     */
+    public List<BatchResult> retrieveBatchPromptResults(String batchJobName) {
+        try (Client client = Client.builder().apiKey(apiKey).build()) {
+            BatchJob job = client.batches.get(batchJobName, null);
+            List<InlinedResponse> responses = job.dest()
+                    .flatMap(d -> d.inlinedResponses())
+                    .orElseThrow(() -> new IllegalStateException("No inlined responses in batch job " + batchJobName));
+
+            return responses.stream()
+                    .map(response -> toBatchResult(response, true))
+                    .toList();
+        }
+    }
+
+    private BatchResult toBatchResult(InlinedResponse r, boolean requireSectionId) {
+        Map<String, String> metadata = r.metadata().orElse(Map.of());
+        String rawSectionId = metadata.get("sectionId");
+        String sectionId = (rawSectionId == null || rawSectionId.isBlank()) ? null : rawSectionId;
+        if (requireSectionId && sectionId == null) {
+            throw new IllegalStateException("Batch prompt response is missing sectionId metadata");
+        }
+
         String text = r.response()
                 .flatMap(resp -> resp.candidates())
                 .filter(c -> !c.isEmpty())
@@ -148,7 +204,7 @@ public class BatchGeminiService {
             total = prompt + completion + thoughts + toolUsePrompt;
         }
 
-        return new BatchResult(text, prompt, completion, cached, thoughts, toolUsePrompt, total);
+        return new BatchResult(sectionId, text, prompt, completion, cached, thoughts, toolUsePrompt, total);
     }
 
     private static String stripBatchPrefix(String modelId) {

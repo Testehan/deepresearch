@@ -45,7 +45,8 @@ public class DiscoveryService {
         log.info("--- Step 1: Search + Discover ---");
 
         int effectiveMaxSources = maxSources > 0 ? maxSources : defaultMaxSources;
-        int numQueries = (effectiveMaxSources <= 5) ? 1 : 2;
+        int numQueries = queryCountFor(effectiveMaxSources);
+        int resultsPerQuery = resultsPerQueryFor(effectiveMaxSources);
 
         var converter = new BeanOutputConverter<>(new ParameterizedTypeReference<List<String>>() {});
         String prompt = discoveryPrompt.formatted(numQueries, topic) + "\n\n" + converter.getFormat();
@@ -69,7 +70,7 @@ public class DiscoveryService {
                 log.warn("Query exceeds 150 chars ({}), truncating: {}", query.length(), query);
                 query = query.substring(0, 150);
             }
-            var results = browserbase.search().web(query, effectiveMaxSources).results();
+            var results = browserbase.search().web(query, resultsPerQuery).results();
             log.info("  Query {}/{}: {} — {} results", i + 1, queries.size(), query, results.size());
             rawHits += results.size();
 
@@ -84,5 +85,13 @@ public class DiscoveryService {
                 rawHits, seenUrls.size(), candidates.size());
 
         return new DiscoveryResult(candidates, queries.size());
+    }
+
+    static int queryCountFor(int effectiveMaxSources) {
+        return Math.max(1, Math.min(8, (int) Math.ceil(effectiveMaxSources / 3.0)));
+    }
+
+    static int resultsPerQueryFor(int effectiveMaxSources) {
+        return Math.min(effectiveMaxSources, 25);
     }
 }

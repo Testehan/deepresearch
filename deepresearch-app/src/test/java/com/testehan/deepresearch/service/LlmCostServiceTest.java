@@ -36,8 +36,8 @@ class LlmCostServiceTest {
     void logAndAccumulateBatch_IncludesThoughtsAndToolUseTokens() {
         LlmUsage accumulator = new LlmUsage();
         List<BatchGeminiService.BatchResult> results = List.of(
-                new BatchGeminiService.BatchResult("one", 1000, 100, 0, 200, 10, 1310),
-                new BatchGeminiService.BatchResult("two", 2000, 300, 100, 400, 20, 2720)
+                new BatchGeminiService.BatchResult(null, "one", 1000, 100, 0, 200, 10, 1310),
+                new BatchGeminiService.BatchResult(null, "two", 2000, 300, 100, 400, 20, 2720)
         );
 
         llmCostService.logAndAccumulateBatch(results, "gemini-2.5-pro", accumulator);

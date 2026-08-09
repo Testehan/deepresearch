@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 public enum ResearchTopic {
     NEWS("news"),
+    CEO_AND_MANAGEMENT("ceo_and_management"),
     EARNINGS_PRESENTATION("earnings_presentation"),
     BATCH_PROMPTS("batch_prompts");
 

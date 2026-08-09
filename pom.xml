@@ -40,6 +40,13 @@
 		</dependencies>
 	</dependencyManagement>
 
+	<repositories>
+		<repository>
+			<id>local-vendor-repo</id>
+			<url>file://${maven.multiModuleProjectDirectory}/local-maven-repo</url>
+		</repository>
+	</repositories>
+
 	<profiles>
 		<profile>
 			<id>local</id>

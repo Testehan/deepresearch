@@ -16,8 +16,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -141,8 +145,7 @@ public class JobService {
 
         try {
             BatchPromptsRequest request = job.config();
-            List<String> promptTexts = request.prompts().stream().map(BatchPromptItem::prompt).toList();
-            String geminiBatchJobId = batchGeminiService.submitBatch(request.modelId(), promptTexts);
+            String geminiBatchJobId = batchGeminiService.submitBatchPrompts(request.modelId(), request.prompts());
 
             jobs.put(jobId, new ResearchJob<>(
                     jobId, job.topic(), ResearchJob.JobStatus.BATCH_POLLING,
@@ -230,21 +233,16 @@ public class JobService {
             LlmUsage usage = job.llmUsage() != null ? job.llmUsage() : new LlmUsage();
 
             if (batchGeminiService.isSucceeded(batchJobId)) {
-                List<BatchGeminiService.BatchResult> batchResults = batchGeminiService.retrieveResults(batchJobId);
+                List<BatchGeminiService.BatchResult> batchResults = batchGeminiService.retrieveBatchPromptResults(batchJobId);
                 llmCostService.logAndAccumulateBatch(batchResults, request.modelId(), usage);
 
                 List<BatchPromptItem> items = request.prompts();
-                if (batchResults.size() != items.size()) {
-                    throw new IllegalStateException("Batch result count " + batchResults.size()
-                            + " does not match prompt count " + items.size()
-                            + " for job " + job.jobId());
-                }
+                validateBatchPromptResultIds(job.jobId(), items, batchResults);
 
-                List<BatchPromptResult> mapped = new java.util.ArrayList<>(batchResults.size());
-                for (int i = 0; i < batchResults.size(); i++) {
-                    BatchGeminiService.BatchResult r = batchResults.get(i);
+                List<BatchPromptResult> mapped = new ArrayList<>(batchResults.size());
+                for (BatchGeminiService.BatchResult r : batchResults) {
                     mapped.add(new BatchPromptResult(
-                            items.get(i).sectionId(),
+                            r.sectionId(),
                             r.text(),
                             r.promptTokens(),
                             r.completionTokens(),
@@ -272,6 +270,49 @@ public class JobService {
         } catch (Exception e) {
             log.error("Error polling Gemini batch {} for batch-prompts job {}: {}",
                     batchJobId, job.jobId(), e.getMessage(), e);
+            jobs.put(job.jobId(), new ResearchJob<>(
+                    job.jobId(), job.topic(), ResearchJob.JobStatus.FAILED,
+                    e.getMessage(), null, job.createdAt(), Instant.now(),
+                    null, job.llmUsage(), job.config(), batchJobId, null
+            ));
+        }
+    }
+
+    private void validateBatchPromptResultIds(String jobId,
+                                              List<BatchPromptItem> submitted,
+                                              List<BatchGeminiService.BatchResult> results) {
+        Set<String> submittedIds = submitted.stream()
+                .map(BatchPromptItem::sectionId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (submittedIds.size() != submitted.size()) {
+            throw new IllegalStateException("Batch prompt job " + jobId + " contains duplicate submitted section ids");
+        }
+        if (results.size() != submitted.size()) {
+            throw new IllegalStateException("Batch result count " + results.size()
+                    + " does not match prompt count " + submitted.size()
+                    + " for job " + jobId);
+        }
+
+        Set<String> resultIds = new HashSet<>();
+        for (BatchGeminiService.BatchResult result : results) {
+            String sectionId = result.sectionId();
+            if (sectionId == null || sectionId.isBlank()) {
+                throw new IllegalStateException("Batch result missing section id for job " + jobId);
+            }
+            if (!submittedIds.contains(sectionId)) {
+                throw new IllegalStateException("Batch result contains unknown section id '" + sectionId
+                        + "' for job " + jobId);
+            }
+            if (!resultIds.add(sectionId)) {
+                throw new IllegalStateException("Batch result contains duplicate section id '" + sectionId
+                        + "' for job " + jobId);
+            }
+        }
+
+        Set<String> missingIds = new LinkedHashSet<>(submittedIds);
+        missingIds.removeAll(resultIds);
+        if (!missingIds.isEmpty()) {
+            throw new IllegalStateException("Batch result missing section ids " + missingIds + " for job " + jobId);
         }
     }
 

@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 
@@ -138,5 +139,99 @@ class JobServiceTest {
                 ResearchDocumentRequest.DEFAULT_COMPILE_REPORT_PROMPT,
                 completedJob.llmUsage()
         );
+    }
+
+    @Test
+    void batchPrompts_shouldMapReorderedResultsBySectionIdMetadata() {
+        var request = new BatchPromptsRequest(
+                "batch-gemini-2.5-pro",
+                List.of(
+                        new BatchPromptItem("darwinPricingPowerCustomerCaptivity:DARWIN", "pricing prompt"),
+                        new BatchPromptItem("darwinTurnaroundMirage:DARWIN", "turnaround prompt")
+                ),
+                "caller-job"
+        );
+        var job = jobService.createBatchPromptsJob(request);
+
+        when(batchGeminiService.submitBatchPrompts(eq(request.modelId()), eq(request.prompts())))
+                .thenReturn("gemini-batch-1");
+        when(batchGeminiService.isComplete("gemini-batch-1")).thenReturn(true);
+        when(batchGeminiService.isSucceeded("gemini-batch-1")).thenReturn(true);
+        when(batchGeminiService.retrieveBatchPromptResults("gemini-batch-1")).thenReturn(List.of(
+                batchResult("darwinTurnaroundMirage:DARWIN", "turnaround result"),
+                batchResult("darwinPricingPowerCustomerCaptivity:DARWIN", "pricing result")
+        ));
+
+        jobService.executeBatchPromptsJob(job.jobId());
+        jobService.checkBatchJobs();
+
+        var completedJob = jobService.getJob(job.jobId());
+        assertEquals(ResearchJob.JobStatus.COMPLETED, completedJob.status());
+        BatchPromptsResult result = (BatchPromptsResult) completedJob.result();
+        assertEquals("darwinTurnaroundMirage:DARWIN", result.results().get(0).sectionId());
+        assertEquals("turnaround result", result.results().get(0).text());
+        assertEquals("darwinPricingPowerCustomerCaptivity:DARWIN", result.results().get(1).sectionId());
+        assertEquals("pricing result", result.results().get(1).text());
+    }
+
+    @Test
+    void batchPrompts_shouldFailWhenResultSectionIdIsDuplicated() {
+        assertBatchPromptValidationFails(List.of(
+                batchResult("section-a", "first"),
+                batchResult("section-a", "duplicate")
+        ), "duplicate section id");
+    }
+
+    @Test
+    void batchPrompts_shouldFailWhenResultSectionIdIsUnknown() {
+        assertBatchPromptValidationFails(List.of(
+                batchResult("section-a", "first"),
+                batchResult("section-c", "unknown")
+        ), "unknown section id");
+    }
+
+    @Test
+    void batchPrompts_shouldFailWhenResultSectionIdIsMissing() {
+        assertBatchPromptValidationFails(List.of(
+                batchResult("section-a", "first"),
+                batchResult(null, "missing")
+        ), "missing section id");
+    }
+
+    @Test
+    void batchPrompts_shouldFailWhenResultCountDoesNotMatchSubmittedPromptCount() {
+        assertBatchPromptValidationFails(List.of(
+                batchResult("section-a", "first")
+        ), "does not match prompt count");
+    }
+
+    private void assertBatchPromptValidationFails(List<BatchGeminiService.BatchResult> batchResults,
+                                                  String expectedMessage) {
+        var request = new BatchPromptsRequest(
+                "batch-gemini-2.5-pro",
+                List.of(
+                        new BatchPromptItem("section-a", "prompt-a"),
+                        new BatchPromptItem("section-b", "prompt-b")
+                ),
+                "caller-job"
+        );
+        var job = jobService.createBatchPromptsJob(request);
+
+        when(batchGeminiService.submitBatchPrompts(eq(request.modelId()), eq(request.prompts())))
+                .thenReturn("gemini-batch-1");
+        when(batchGeminiService.isComplete("gemini-batch-1")).thenReturn(true);
+        when(batchGeminiService.isSucceeded("gemini-batch-1")).thenReturn(true);
+        when(batchGeminiService.retrieveBatchPromptResults("gemini-batch-1")).thenReturn(batchResults);
+
+        jobService.executeBatchPromptsJob(job.jobId());
+        jobService.checkBatchJobs();
+
+        var failedJob = jobService.getJob(job.jobId());
+        assertEquals(ResearchJob.JobStatus.FAILED, failedJob.status());
+        assertTrue(failedJob.errorMessage().contains(expectedMessage));
+    }
+
+    private static BatchGeminiService.BatchResult batchResult(String sectionId, String text) {
+        return new BatchGeminiService.BatchResult(sectionId, text, 1, 2, 0, 0, 0, 3);
     }
 }
