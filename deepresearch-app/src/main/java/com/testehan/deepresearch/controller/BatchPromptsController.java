@@ -1,11 +1,15 @@
 package com.testehan.deepresearch.controller;
 
 import com.testehan.deepresearch.model.BatchPromptsRequest;
+import com.testehan.deepresearch.model.JobStatusResponse;
 import com.testehan.deepresearch.model.JobResponse;
+import com.testehan.deepresearch.model.ResearchTopic;
 import com.testehan.deepresearch.service.JobService;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -32,9 +36,15 @@ public class BatchPromptsController {
             }
         }
 
-        var job = jobService.createBatchPromptsJob(request);
-        jobService.executeBatchPromptsJob(job.jobId());
+        String batchJobId = jobService.submitBatchPrompts(request);
         return ResponseEntity.accepted()
-                .body(new JobResponse(job.jobId(), job.topic(), job.status().toString()));
+                .body(new JobResponse(null, ResearchTopic.BATCH_PROMPTS, "batch_polling", batchJobId));
+    }
+
+    @GetMapping("/api/batch-prompts/status")
+    public ResponseEntity<JobStatusResponse> getBatchPromptsStatus(
+            @RequestParam String batchJobId,
+            @RequestParam String modelId) {
+        return ResponseEntity.ok(jobService.getBatchPromptsStatus(batchJobId, modelId));
     }
 }

@@ -72,6 +72,13 @@ public class JobService {
         return job;
     }
 
+    public String submitBatchPrompts(BatchPromptsRequest request) {
+        String geminiBatchJobId = batchGeminiService.submitBatchPrompts(request.modelId(), request.prompts());
+        log.info("Batch-prompts request submitted to Gemini batch (batchJobId={}, callerJobId={})",
+                geminiBatchJobId, request.callerJobId());
+        return geminiBatchJobId;
+    }
+
     public ResearchJob<ResearchDocumentRequest> createDocumentJob(String filename, ResearchDocumentRequest request) {
         String jobId = UUID.randomUUID().toString();
         var job = new ResearchJob<>(
@@ -276,6 +283,63 @@ public class JobService {
                     null, job.llmUsage(), job.config(), batchJobId, null
             ));
         }
+    }
+
+    public JobStatusResponse getBatchPromptsStatus(String batchJobId, String modelId) {
+        if (batchJobId == null || batchJobId.isBlank()) {
+            throw new IllegalArgumentException("batchJobId is required");
+        }
+        if (modelId == null || modelId.isBlank()) {
+            throw new IllegalArgumentException("modelId is required");
+        }
+
+        if (!batchGeminiService.isComplete(batchJobId)) {
+            return new JobStatusResponse(
+                    ResearchJob.JobStatus.BATCH_POLLING.toString(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    batchJobId
+            );
+        }
+
+        if (!batchGeminiService.isSucceeded(batchJobId)) {
+            return new JobStatusResponse(
+                    ResearchJob.JobStatus.FAILED.toString(),
+                    null,
+                    null,
+                    "Gemini batch job " + batchJobId + " did not succeed",
+                    null,
+                    batchJobId
+            );
+        }
+
+        List<BatchGeminiService.BatchResult> batchResults = batchGeminiService.retrieveBatchPromptResults(batchJobId);
+        LlmUsage usage = new LlmUsage();
+        llmCostService.logAndAccumulateBatch(batchResults, modelId, usage);
+
+        List<BatchPromptResult> mapped = batchResults.stream()
+                .map(r -> new BatchPromptResult(
+                        r.sectionId(),
+                        r.text(),
+                        r.promptTokens(),
+                        r.completionTokens(),
+                        r.cachedTokens(),
+                        r.thoughtsTokens(),
+                        r.toolUsePromptTokens(),
+                        r.totalTokens()
+                ))
+                .toList();
+
+        return new JobStatusResponse(
+                ResearchJob.JobStatus.COMPLETED.toString(),
+                new BatchPromptsResult(mapped),
+                null,
+                null,
+                usage,
+                batchJobId
+        );
     }
 
     private void validateBatchPromptResultIds(String jobId,

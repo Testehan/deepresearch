@@ -205,6 +205,36 @@ class JobServiceTest {
         ), "does not match prompt count");
     }
 
+    @Test
+    void getBatchPromptsStatus_shouldReturnPollingWhenGeminiBatchIsNotComplete() {
+        when(batchGeminiService.isComplete("gemini-batch-1")).thenReturn(false);
+
+        JobStatusResponse response = jobService.getBatchPromptsStatus("gemini-batch-1", "batch-gemini-2.5-pro");
+
+        assertEquals(ResearchJob.JobStatus.BATCH_POLLING.toString(), response.status());
+        assertEquals("gemini-batch-1", response.batchJobId());
+        assertNull(response.result());
+    }
+
+    @Test
+    void getBatchPromptsStatus_shouldReturnCompletedBatchPromptsResultWhenGeminiBatchSucceeded() {
+        when(batchGeminiService.isComplete("gemini-batch-1")).thenReturn(true);
+        when(batchGeminiService.isSucceeded("gemini-batch-1")).thenReturn(true);
+        when(batchGeminiService.retrieveBatchPromptResults("gemini-batch-1")).thenReturn(List.of(
+                batchResult("section-a", "first"),
+                batchResult("section-b", "second")
+        ));
+
+        JobStatusResponse response = jobService.getBatchPromptsStatus("gemini-batch-1", "batch-gemini-2.5-pro");
+
+        assertEquals(ResearchJob.JobStatus.COMPLETED.toString(), response.status());
+        assertEquals("gemini-batch-1", response.batchJobId());
+        BatchPromptsResult result = (BatchPromptsResult) response.result();
+        assertEquals(2, result.results().size());
+        assertEquals("section-a", result.results().getFirst().sectionId());
+        assertNotNull(response.llmUsage());
+    }
+
     private void assertBatchPromptValidationFails(List<BatchGeminiService.BatchResult> batchResults,
                                                   String expectedMessage) {
         var request = new BatchPromptsRequest(

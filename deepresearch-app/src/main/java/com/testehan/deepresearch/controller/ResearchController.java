@@ -53,17 +53,27 @@ public class ResearchController {
                     job.result(),
                     job.filePath(),
                     null,
-                    job.llmUsage()
+                    job.llmUsage(),
+                    job.batchJobId()
             ));
         } else if (job.status() == ResearchJob.JobStatus.FAILED) {
             return ResponseEntity.ok(new JobStatusResponse(
                     job.status().toString(),
                     null,
                     null,
-                    job.errorMessage()
+                    job.errorMessage(),
+                    job.llmUsage(),
+                    job.batchJobId()
             ));
         } else {
-            return ResponseEntity.ok(new JobStatusResponse(job.status().toString(), null, null));
+            return ResponseEntity.ok(new JobStatusResponse(
+                    job.status().toString(),
+                    null,
+                    null,
+                    null,
+                    job.llmUsage(),
+                    job.batchJobId()
+            ));
         }
     }
 }
